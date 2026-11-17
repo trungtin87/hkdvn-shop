@@ -2,36 +2,46 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tạp Hóa Minh Tâm — Cửa hàng trực tuyến</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Tạp Hóa Minh Tâm — Thực đơn &amp; Đặt món</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
   <style>
-    body { font-family: 'DM Sans', system-ui, sans-serif; background: #F8F9FA; color: #111827; }
+    body { font-family: 'DM Sans', system-ui, sans-serif; background: #F8F9FA; color: #111827; -webkit-tap-highlight-color: transparent; }
     h1, h2, h3 { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
     .tabular-nums { font-variant-numeric: tabular-nums; font-family: 'JetBrains Mono', monospace; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
   </style>
 </head>
 <body class="min-h-screen flex flex-col">
   <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200">
-    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+    <div class="max-w-5xl mx-auto px-3.5 sm:px-5 h-14 flex items-center justify-between gap-3">
       <div class="min-w-0">
-        <h1 id="shop-name" class="text-lg font-bold text-slate-900 truncate">Tạp Hóa Minh Tâm</h1>
-        <p id="shop-sub" class="text-xs text-slate-500 truncate"></p>
+        <h1 id="shop-name" class="text-base sm:text-lg font-bold text-slate-900 truncate">Tạp Hóa Minh Tâm</h1>
+        <p id="shop-sub" class="text-[11px] text-slate-500 truncate"></p>
       </div>
-      <div class="flex items-center gap-2 shrink-0">
-        <span id="table-label" class="hidden text-xs font-bold text-[#0F766E] px-2.5 py-1.5 bg-teal-50 rounded-lg"></span>
-        <button id="bag-btn" type="button" class="hidden px-3.5 py-2 bg-[#0F766E] text-white text-xs font-semibold rounded-lg whitespace-nowrap"></button>
-        <a href="./admin.html" class="px-3 py-2 text-xs font-semibold text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 whitespace-nowrap">Quản lý quán</a>
-      </div>
+      <div id="header-right" class="flex items-center gap-2 shrink-0"></div>
     </div>
   </header>
 
-  <main id="app" class="flex-1 max-w-6xl w-full mx-auto px-4 py-6 pb-28"></main>
+  <div class="sticky top-14 z-20 bg-[#F8F9FA]/95 backdrop-blur border-b border-slate-200/70">
+    <div class="max-w-5xl mx-auto px-3.5 sm:px-5 py-2.5 space-y-2.5">
+      <div class="relative">
+        <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="search-input" type="search" placeholder="Tìm món ăn, đồ uống không dấu (vd: pho bo, ca phe)..." class="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0F766E]/25 focus:border-[#0F766E]" />
+      </div>
+      <div id="cat-bar" class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5"></div>
+    </div>
+  </div>
 
+  <main id="app" class="flex-1 max-w-5xl w-full mx-auto px-3.5 sm:px-5 py-4 pb-36"></main>
+
+  <div id="bottom-dock" class="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 shadow-[0_-4px_20px_rgba(15,23,42,0.06)]"></div>
+  <div id="toast-root" class="fixed top-16 inset-x-0 z-50 flex justify-center px-4 pointer-events-none"></div>
   <div id="modal-root"></div>
 
   <script>
@@ -41,11 +51,10 @@
       var search = '';
       var activeCat = 'Tất cả';
       var bag = [];
-      var fnbViewMode = 'card';
-      var cardIdx = 0;
       var pendingCart = {};
       var tableNumber = Number(new URLSearchParams(location.search).get('ban')) || 1;
       var submittedItems = [];
+      var storageBridgeKey = 'hkdvn_live_bridge_' + location.pathname.replace(/[^a-zA-Z0-9]/g, '_');
 
       function noAccent(str) {
         return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim();
@@ -55,6 +64,13 @@
       }
       function esc(s) {
         return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      }
+      function showToast(msg, isErr) {
+        var root = document.getElementById('toast-root');
+        root.innerHTML = '<div class="pointer-events-auto max-w-md w-full px-4 py-3 rounded-xl shadow-lg text-xs font-semibold text-white flex items-center justify-between gap-2 ' + (isErr ? 'bg-red-700' : 'bg-[#0F766E]') + '">' +
+          '<span>' + esc(msg) + '</span></div>';
+        clearTimeout(window.__hkdvnToastTimer);
+        window.__hkdvnToastTimer = setTimeout(function () { root.innerHTML = ''; }, 3600);
       }
       function tlv(tag, val) {
         return tag + String(val.length).padStart(2, '0') + val;
@@ -81,42 +97,71 @@
         return raw + crc16(raw);
       }
 
+      function saveLiveBridge(payload) {
+        try {
+          var existing = JSON.parse(localStorage.getItem(storageBridgeKey) || '{}');
+          existing[String(payload.tableNumber)] = Object.assign({}, payload, { updatedAt: new Date().toISOString() });
+          localStorage.setItem(storageBridgeKey, JSON.stringify(existing));
+        } catch (e) {}
+      }
+
+      function getGasUrl() {
+        try {
+          var localOverride = localStorage.getItem('hkdvn_gas_override_' + (config && config.infra ? config.infra.githubRepo : ''));
+          if (localOverride) return localOverride;
+        } catch (e) {}
+        return config && config.infra && config.infra.gasEndpointUrl ? config.infra.gasEndpointUrl.trim() : '';
+      }
+
       async function postGas(action, payload) {
-        var url = config && config.infra && config.infra.gasEndpointUrl;
-        if (!url) return;
+        saveLiveBridge(Object.assign({ action: action }, payload));
+        var url = getGasUrl();
+        if (!url) {
+          showToast('Đã ghi nhận trên máy. Lưu ý: Chưa cấu hình link Apps Script (/exec) để đồng bộ sang quầy.', true);
+          return false;
+        }
         try {
           await fetch(url, {
             method: 'POST',
             mode: 'no-cors',
+            redirect: 'follow',
+            keepalive: true,
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(Object.assign({ action: action }, payload))
           });
-        } catch (e) {}
+          return true;
+        } catch (e) {
+          showToast('Không thể gửi tới máy chủ Google Apps Script. Vui lòng kiểm tra mạng.', true);
+          return false;
+        }
       }
 
-      function renderFallbackImg(imgEl, title) {
-        var wrap = imgEl.parentElement;
-        if (!wrap) return;
-        wrap.innerHTML = '<div class="w-full h-full flex flex-col items-center justify-center bg-slate-100 text-slate-400 p-4 text-center"><span class="text-xs font-medium text-slate-500">' + esc(title) + '</span></div>';
+      function fallbackThumbHTML(title) {
+        return '<div class="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-100 to-teal-50/60 text-slate-400 p-3 text-center">' +
+          '<svg class="w-7 h-7 text-[#0F766E]/45 mb-1" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>' +
+          '<span class="text-[11px] font-medium text-slate-500 line-clamp-2">' + esc(title) + '</span></div>';
       }
 
       function bindImages() {
         document.querySelectorAll('img[data-fallback]').forEach(function (img) {
-          img.onerror = function () { renderFallbackImg(img, img.getAttribute('data-fallback')); };
+          img.onerror = function () {
+            if (img.parentElement) img.parentElement.innerHTML = fallbackThumbHTML(img.getAttribute('data-fallback'));
+          };
         });
       }
 
-      function showQRModal(title, amount, desc) {
+      function showQRModal(title, amount, desc, subtitle) {
         var root = document.getElementById('modal-root');
         var payload = buildVietQR(amount, desc);
-        root.innerHTML = '<div class="fixed inset-0 z-50 bg-slate-950/55 flex items-center justify-center p-4">' +
-          '<div class="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-6 space-y-4">' +
-          '<div class="flex items-center justify-between"><h3 class="text-lg font-bold">' + esc(title) + '</h3>' +
-          '<button id="close-qr" class="px-2 py-1 text-sm text-slate-500 hover:text-slate-900">Đóng</button></div>' +
+        root.innerHTML = '<div class="fixed inset-0 z-50 bg-slate-950/60 flex items-end sm:items-center justify-center p-0 sm:p-4">' +
+          '<div class="bg-white border border-slate-200 rounded-t-3xl sm:rounded-2xl max-w-sm w-full p-5 space-y-4">' +
+          '<div class="flex items-center justify-between"><h3 class="text-base font-bold">' + esc(title) + '</h3>' +
+          '<button id="close-qr" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg">Đóng</button></div>' +
+          (subtitle ? '<p class="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 font-medium">' + esc(subtitle) + '</p>' : '') +
           '<div class="flex flex-col items-center">' +
           '<img id="qr-img" class="w-52 h-52 border border-slate-200 rounded-xl p-2 bg-white" alt="VietQR" />' +
           '<p class="mt-3 text-2xl font-bold tabular-nums text-[#0F766E]">' + vnd(amount) + '</p>' +
-          '<p class="text-xs text-slate-500 mt-1">' + esc(config.bank.bankShortName) + ' · ' + esc(config.bank.accountNumber) + ' · ' + esc(config.bank.accountName) + '</p>' +
+          '<p class="text-xs text-slate-500 mt-1 text-center">' + esc(config.bank.bankShortName) + ' · ' + esc(config.bank.accountNumber) + ' · ' + esc(config.bank.accountName) + '</p>' +
           '</div></div></div>';
         document.getElementById('close-qr').onclick = function () { root.innerHTML = ''; };
         if (window.QRCode && window.QRCode.toDataURL) {
@@ -126,192 +171,184 @@
         }
       }
 
-      function getFiltered() {
-        return products.filter(function (p) {
-          var catOk = activeCat === 'Tất cả' || p.category === activeCat;
-          var qOk = !search || noAccent(p.name).includes(noAccent(search)) || noAccent(p.sku).includes(noAccent(search));
-          return catOk && qOk;
+      function openSupportAndPaySheet() {
+        var root = document.getElementById('modal-root');
+        var subTotal = submittedItems.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
+        var pTotal = Object.keys(pendingCart).reduce(function (s, id) {
+          var p = products.find(function (x) { return x.id === id; });
+          return s + (p ? p.price * pendingCart[id].qty : 0);
+        }, 0);
+        var billAmount = subTotal > 0 ? subTotal : pTotal;
+
+        root.innerHTML = '<div id="sheet-backdrop" class="fixed inset-0 z-50 bg-slate-950/60 flex items-end sm:items-center justify-center">' +
+          '<div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] overflow-y-auto">' +
+          '<div class="flex items-center justify-between">' +
+          '<div><h3 class="text-base font-bold text-slate-900">Bàn ' + tableNumber + ' · Thanh toán &amp; Hỗ trợ</h3>' +
+          '<p class="text-xs text-slate-500">Yêu cầu sẽ phát chuông báo ngay tới quầy phục vụ</p></div>' +
+          '<button id="close-sheet" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg">Đóng</button></div>' +
+
+          '<div class="p-4 bg-teal-50/60 border border-[#0F766E]/25 rounded-2xl space-y-2.5">' +
+          '<div class="flex items-center justify-between"><span class="text-sm font-bold text-slate-900">1. Gọi thanh toán</span>' +
+          '<span class="text-sm font-bold tabular-nums text-[#0F766E]">' + vnd(billAmount) + '</span></div>' +
+          '<button id="act-call-pay" class="w-full py-3 bg-[#0F766E] hover:bg-[#0D655E] text-white text-sm font-bold rounded-xl">Gửi yêu cầu thanh toán &amp; Hiện VietQR</button>' +
+          '</div>' +
+
+          '<div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">' +
+          '<p class="text-sm font-bold text-slate-900">2. Gọi nhân viên hỗ trợ tại bàn</p>' +
+          '<div class="grid grid-cols-2 gap-2">' +
+          ['Thêm đá / nước', 'Lấy thêm đũa, muỗng', 'Dọn bàn / khăn giấy', 'Cần hỗ trợ trực tiếp'].map(function (txt) {
+            return '<button type="button" data-quick-help="' + esc(txt) + '" class="px-3 py-2.5 text-xs font-semibold bg-white border border-slate-200 rounded-xl text-slate-800 hover:border-[#0F766E] text-left">' + esc(txt) + '</button>';
+          }).join('') +
+          '</div>' +
+          '<input id="help-note" type="text" placeholder="Hoặc nhập yêu cầu khác (tùy chọn)..." class="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-200 rounded-xl" />' +
+          '<button id="act-call-help" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold rounded-xl">Gửi yêu cầu hỗ trợ</button>' +
+          '</div></div></div>';
+
+        document.getElementById('close-sheet').onclick = function () { root.innerHTML = ''; };
+        document.getElementById('sheet-backdrop').onclick = function (e) { if (e.target.id === 'sheet-backdrop') root.innerHTML = ''; };
+
+        document.querySelectorAll('[data-quick-help]').forEach(function (b) {
+          b.onclick = function () {
+            document.getElementById('help-note').value = b.getAttribute('data-quick-help');
+          };
         });
+
+        document.getElementById('act-call-pay').onclick = async function () {
+          var ok = await postGas('requestPayment', {
+            tableNumber: tableNumber,
+            status: 'payment_requested',
+            totalAmount: billAmount,
+            lastOrderId: 'TT-B' + tableNumber + '-' + Date.now().toString().slice(-4),
+            items: submittedItems
+          });
+          if (ok) showToast('Đã gửi yêu cầu thanh toán Bàn ' + tableNumber + ' tới thu ngân!');
+          showQRModal('Thanh toán Bàn ' + tableNumber, billAmount, 'BAN ' + tableNumber, 'Nhân viên thu ngân đã nhận được thông báo thanh toán của Bàn ' + tableNumber + '.');
+        };
+
+        document.getElementById('act-call-help').onclick = async function () {
+          var note = document.getElementById('help-note').value.trim() || 'Cần nhân viên hỗ trợ tại bàn';
+          var ok = await postGas('callSupport', {
+            tableNumber: tableNumber,
+            status: 'support_requested',
+            totalAmount: subTotal,
+            lastOrderId: 'HOTRO: ' + note,
+            items: submittedItems
+          });
+          root.innerHTML = '';
+          if (ok) showToast('Đã gọi nhân viên hỗ trợ Bàn ' + tableNumber + ': ' + note);
+        };
       }
 
-      function render() {
-        var app = document.getElementById('app');
-        var cats = ['Tất cả'].concat(Array.from(new Set(products.map(function (p) { return p.category; }))));
-        var list = getFiltered();
+      function openSubmittedModal() {
+        var root = document.getElementById('modal-root');
+        var subTotal = submittedItems.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
+        root.innerHTML = '<div id="sub-backdrop" class="fixed inset-0 z-50 bg-slate-950/60 flex items-end sm:items-center justify-center">' +
+          '<div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-4 max-h-[85vh] flex flex-col">' +
+          '<div class="flex items-center justify-between border-b border-slate-100 pb-3">' +
+          '<h3 class="text-base font-bold">Món đã gửi bếp · Bàn ' + tableNumber + '</h3>' +
+          '<button id="close-sub" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg">Đóng</button></div>' +
+          '<div class="flex-1 overflow-y-auto space-y-2.5">' +
+          (submittedItems.length ? submittedItems.map(function (i) {
+            return '<div class="flex justify-between gap-2 text-sm border-b border-slate-100 pb-2">' +
+              '<div class="min-w-0"><p class="font-semibold text-slate-900">' + i.qty + ' × ' + esc(i.name) + '</p>' +
+              (i.note ? '<p class="text-xs text-slate-500">Ghi chú: ' + esc(i.note) + '</p>' : '') +
+              '</div><span class="tabular-nums font-bold text-slate-900 shrink-0">' + vnd(i.price * i.qty) + '</span></div>';
+          }).join('') : '<p class="text-sm text-slate-500 py-6 text-center">Chưa có món nào được gửi bếp.</p>') +
+          '</div>' +
+          '<div class="pt-3 border-t border-slate-100 flex justify-between items-center font-bold">' +
+          '<span>Tạm tính</span><span class="text-lg tabular-nums text-[#0F766E]">' + vnd(subTotal) + '</span>' +
+          '</div></div></div>';
+        document.getElementById('close-sub').onclick = function () { root.innerHTML = ''; };
+        document.getElementById('sub-backdrop').onclick = function (e) { if (e.target.id === 'sub-backdrop') root.innerHTML = ''; };
+      }
 
-        var filterBar = '<div class="flex flex-col sm:flex-row gap-3 mb-6 justify-between">' +
-          '<input id="search-input" type="search" value="' + esc(search) + '" placeholder="Tìm kiếm không dấu (VD: ca phe, pho bo)..." class="w-full sm:max-w-sm px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl" />' +
-          '<div class="flex gap-1 p-1 bg-slate-100 rounded-xl overflow-x-auto">' +
-          cats.map(function (c) {
-            var cls = c === activeCat ? 'bg-white text-slate-900 font-semibold shadow-sm' : 'text-slate-600';
-            return '<button data-cat="' + esc(c) + '" class="px-3 py-1.5 text-xs rounded-lg whitespace-nowrap ' + cls + '">' + esc(c) + '</button>';
-          }).join('') +
-          '</div></div>';
+      function openBagModal() {
+        var root = document.getElementById('modal-root');
+        var total = bag.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
+        root.innerHTML = '<div id="bag-backdrop" class="fixed inset-0 z-50 bg-slate-950/60 flex items-end sm:items-center justify-center">' +
+          '<div class="w-full max-w-md bg-white rounded-t-3xl sm:rounded-2xl p-5 flex flex-col max-h-[88vh]">' +
+          '<div class="flex items-center justify-between border-b border-slate-100 pb-3"><h3 class="text-base font-bold">Giỏ hàng của bạn</h3>' +
+          '<button id="close-bag" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg">Đóng</button></div>' +
+          '<div class="flex-1 overflow-y-auto py-3 space-y-2.5">' +
+          (bag.length ? bag.map(function (i) {
+            return '<div class="flex items-center justify-between gap-2 text-sm border-b border-slate-100 pb-2"><span>' + i.qty + ' × ' + esc(i.name) + '</span><span class="tabular-nums font-bold">' + vnd(i.price * i.qty) + '</span></div>';
+          }).join('') : '<p class="text-sm text-slate-500 text-center py-8">Giỏ hàng đang trống.</p>') +
+          '</div>' +
+          '<div class="border-t border-slate-100 pt-4 space-y-3">' +
+          '<div class="flex justify-between font-bold text-base"><span>Tổng cộng</span><span class="tabular-nums text-[#0F766E]">' + vnd(total) + '</span></div>' +
+          '<button id="bag-pay" ' + (!bag.length ? 'disabled' : '') + ' class="w-full py-3.5 bg-[#0F766E] disabled:bg-slate-200 text-white text-sm font-bold rounded-xl">Thanh toán VietQR</button>' +
+          '</div></div></div>';
+        document.getElementById('close-bag').onclick = function () { root.innerHTML = ''; };
+        document.getElementById('bag-backdrop').onclick = function (e) { if (e.target.id === 'bag-backdrop') root.innerHTML = ''; };
+        document.getElementById('bag-pay').onclick = function () {
+          showQRModal('Thanh toán đơn hàng', total, 'MANG DI', 'Vui lòng quét mã VietQR để thanh toán.');
+        };
+      }
 
+      function renderHeaderAndCats() {
+        var hr = document.getElementById('header-right');
         if (config.model === 'retail') {
-          var bagBtn = document.getElementById('bag-btn');
-          bagBtn.classList.remove('hidden');
           var count = bag.reduce(function (s, i) { return s + i.qty; }, 0);
-          bagBtn.textContent = 'Giỏ hàng (' + count + ')';
-          bagBtn.onclick = openBagModal;
-
-          app.innerHTML = filterBar +
-            '<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">' +
-            list.map(function (p) {
-              var out = p.status === 'Hết hàng' || p.stock <= 0;
-              return '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col">' +
-                '<div class="aspect-square bg-slate-100 overflow-hidden"><img src="' + esc(p.imageUrl) + '" data-fallback="' + esc(p.name) + '" alt="' + esc(p.name) + '" class="w-full h-full object-cover" /></div>' +
-                '<div class="p-4 flex-1 flex flex-col justify-between">' +
-                '<div><div class="flex justify-between text-xs text-slate-500"><span>' + esc(p.category) + '</span><span class="' + (out ? 'text-red-700' : 'text-emerald-700') + '">' + (out ? 'Hết hàng' : 'Còn hàng') + '</span></div>' +
-                '<h2 class="text-base font-bold text-slate-900 mt-1">' + esc(p.name) + '</h2>' +
-                '<p class="text-xs text-slate-500 mt-1 line-clamp-2">' + esc(p.description) + '</p></div>' +
-                '<div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">' +
-                '<span class="text-base font-bold tabular-nums text-[#0F766E]">' + vnd(p.price) + '<span class="text-xs font-normal text-slate-500"> / ' + esc(p.unit) + '</span></span>' +
-                '<button data-add="' + esc(p.id) + '" ' + (out ? 'disabled' : '') + ' class="px-3.5 py-2 bg-[#0F766E] disabled:bg-slate-200 text-white text-xs font-semibold rounded-lg">Thêm</button>' +
-                '</div></div></div>';
-            }).join('') +
-            '</div>';
+          hr.innerHTML = '<button id="bag-btn" type="button" class="px-3.5 py-2 min-h-[40px] bg-[#0F766E] text-white text-xs font-bold rounded-xl whitespace-nowrap">Giỏ (' + count + ')</button>';
+          document.getElementById('bag-btn').onclick = openBagModal;
         } else {
-          // F&B Model
-          var tLabel = document.getElementById('table-label');
-          tLabel.classList.remove('hidden');
-          tLabel.textContent = 'Bàn số ' + tableNumber;
-
-          if (cardIdx >= list.length) cardIdx = 0;
-          var activeDish = list[cardIdx];
-
-          var topControls = '<div class="flex flex-wrap items-center justify-between gap-3 mb-4 bg-white border border-slate-200 rounded-2xl p-4">' +
-            '<div class="flex items-center gap-2"><span class="text-sm font-bold">Đang chọn món tại Bàn ' + tableNumber + '</span>' +
-            '<select id="table-select" class="px-2.5 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50">' +
+          hr.innerHTML = '<select id="table-select" aria-label="Chọn bàn" class="px-3 py-1.5 min-h-[38px] text-xs font-bold text-[#0F766E] bg-teal-50 border border-teal-200 rounded-xl">' +
             Array.from({ length: config.tableCount || 12 }, function (_, idx) {
               var n = idx + 1;
               return '<option value="' + n + '"' + (n === tableNumber ? ' selected' : '') + '>Bàn ' + n + '</option>';
-            }).join('') + '</select></div>' +
-            '<div class="flex gap-1 p-1 bg-slate-100 rounded-lg">' +
-            '<button id="mode-card" class="px-3 py-1.5 text-xs rounded-md ' + (fnbViewMode === 'card' ? 'bg-white font-semibold shadow-sm' : 'text-slate-600') + '">Thẻ lớn</button>' +
-            '<button id="mode-grid" class="px-3 py-1.5 text-xs rounded-md ' + (fnbViewMode === 'grid' ? 'bg-white font-semibold shadow-sm' : 'text-slate-600') + '">Lưới</button>' +
-            '</div></div>';
-
-          var mainMenu = '';
-          if (fnbViewMode === 'card' && activeDish) {
-            var cur = pendingCart[activeDish.id] || { qty: 0, note: '' };
-            mainMenu = '<div class="bg-white border border-slate-200 rounded-3xl overflow-hidden">' +
-              '<div class="relative aspect-4/3 sm:aspect-16/10 bg-slate-100">' +
-              '<img src="' + esc(activeDish.imageUrl) + '" data-fallback="' + esc(activeDish.name) + '" class="w-full h-full object-cover" />' +
-              '<div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/35 to-transparent p-5 text-white">' +
-              '<p class="text-xs text-white/80">' + esc(activeDish.category) + ' · ' + (cardIdx + 1) + '/' + list.length + '</p>' +
-              '<h2 class="text-2xl font-bold mt-1">' + esc(activeDish.name) + '</h2>' +
-              '<p class="text-xl font-bold tabular-nums text-emerald-300 mt-1">' + vnd(activeDish.price) + '</p></div>' +
-              '<button id="prev-dish" class="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/90 text-slate-900 font-bold shadow">‹</button>' +
-              '<button id="next-dish" class="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/90 text-slate-900 font-bold shadow">›</button>' +
-              '</div><div class="p-5 space-y-4">' +
-              '<p class="text-sm text-slate-600">' + esc(activeDish.description) + '</p>' +
-              '<div class="flex flex-col sm:flex-row gap-3">' +
-              '<div class="flex items-center gap-3">' +
-              '<button data-fnb-minus="' + esc(activeDish.id) + '" class="w-11 h-11 rounded-xl border border-slate-200 font-bold">−</button>' +
-              '<span class="w-8 text-center text-lg font-bold tabular-nums">' + cur.qty + '</span>' +
-              '<button data-fnb-plus="' + esc(activeDish.id) + '" class="w-11 h-11 rounded-xl bg-[#0F766E] text-white font-bold">+</button>' +
-              '</div>' +
-              '<input data-fnb-note="' + esc(activeDish.id) + '" value="' + esc(cur.note) + '" placeholder="Ghi chú (ít đá, không hành)..." class="flex-1 px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl" />' +
-              '</div></div></div>';
-          } else {
-            mainMenu = '<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">' +
-              list.map(function (d) {
-                var cur = pendingCart[d.id] || { qty: 0, note: '' };
-                return '<div class="bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col">' +
-                  '<div class="aspect-4/3 bg-slate-100"><img src="' + esc(d.imageUrl) + '" data-fallback="' + esc(d.name) + '" class="w-full h-full object-cover" /></div>' +
-                  '<div class="p-4 space-y-3"><h3 class="font-bold text-slate-900">' + esc(d.name) + '</h3>' +
-                  '<p class="font-bold tabular-nums text-[#0F766E]">' + vnd(d.price) + '</p>' +
-                  '<div class="flex items-center gap-2">' +
-                  '<button data-fnb-minus="' + esc(d.id) + '" class="w-10 h-10 rounded-lg border border-slate-200 font-bold">−</button>' +
-                  '<span class="w-8 text-center font-bold tabular-nums">' + cur.qty + '</span>' +
-                  '<button data-fnb-plus="' + esc(d.id) + '" class="w-10 h-10 rounded-lg bg-[#0F766E] text-white font-bold">+</button>' +
-                  '</div></div></div>';
-              }).join('') + '</div>';
-          }
-
-          var pendingList = Object.keys(pendingCart).map(function (id) {
-            var p = products.find(function (x) { return x.id === id; });
-            return p ? Object.assign({}, p, { qty: pendingCart[id].qty, note: pendingCart[id].note }) : null;
-          }).filter(Boolean);
-          var pCount = pendingList.reduce(function (s, i) { return s + i.qty; }, 0);
-          var pTotal = pendingList.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
-          var subTotal = submittedItems.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
-
-          var summaryBox = '<div class="mt-6 bg-white border border-slate-200 rounded-2xl p-5 space-y-4">' +
-            '<div class="flex flex-wrap items-center justify-between gap-3">' +
-            '<div><p class="text-sm font-bold">Đơn mới chọn: ' + pCount + ' món (' + vnd(pTotal) + ')</p>' +
-            '<p class="text-xs text-slate-500">Đã gửi bếp: ' + submittedItems.reduce(function (s, i) { return s + i.qty; }, 0) + ' món · Tạm tính: ' + vnd(subTotal) + '</p></div>' +
-            '<div class="flex gap-2">' +
-            '<button id="btn-submit-order" ' + (pCount === 0 ? 'disabled' : '') + ' class="px-4 py-2.5 bg-[#0F766E] disabled:bg-slate-200 text-white text-xs font-semibold rounded-xl">Xác nhận đặt món</button>' +
-            '<button id="btn-req-pay" ' + (submittedItems.length === 0 ? 'disabled' : '') + ' class="px-4 py-2.5 bg-slate-900 disabled:bg-slate-200 text-white text-xs font-semibold rounded-xl">Yêu cầu thanh toán</button>' +
-            '</div></div></div>';
-
-          app.innerHTML = topControls + filterBar + mainMenu + summaryBox;
+            }).join('') + '</select>';
+          document.getElementById('table-select').onchange = function (e) {
+            tableNumber = Number(e.target.value);
+            renderDock();
+          };
         }
 
-        bindImages();
-        bindEvents(list);
+        var cats = ['Tất cả'].concat(Array.from(new Set(products.map(function (p) { return p.category; }))));
+        var catBar = document.getElementById('cat-bar');
+        catBar.innerHTML = cats.map(function (c) {
+          var active = c === activeCat;
+          return '<button data-cat="' + esc(c) + '" class="px-3.5 py-2 min-h-[36px] text-xs rounded-xl whitespace-nowrap transition-colors ' + (active ? 'bg-[#0F766E] text-white font-semibold' : 'bg-white border border-slate-200 text-slate-700') + '">' + esc(c) + '</button>';
+        }).join('');
+        catBar.querySelectorAll('[data-cat]').forEach(function (btn) {
+          btn.onclick = function () { activeCat = btn.getAttribute('data-cat'); renderMenu(); renderHeaderAndCats(); };
+        });
       }
 
-      function bindEvents(list) {
-        var si = document.getElementById('search-input');
-        if (si) si.oninput = function (e) { search = e.target.value; render(); };
+      function renderDock() {
+        var dock = document.getElementById('bottom-dock');
+        if (config.model === 'retail') {
+          var count = bag.reduce(function (s, i) { return s + i.qty; }, 0);
+          var total = bag.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
+          if (!count) { dock.innerHTML = ''; return; }
+          dock.innerHTML = '<div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">' +
+            '<div><p class="text-xs text-slate-500">Đang chọn ' + count + ' sản phẩm</p><p class="text-base font-bold tabular-nums text-[#0F766E]">' + vnd(total) + '</p></div>' +
+            '<button id="dock-bag" class="px-5 py-3 min-h-[46px] bg-[#0F766E] text-white text-sm font-bold rounded-xl">Xem giỏ &amp; Thanh toán</button></div>';
+          document.getElementById('dock-bag').onclick = openBagModal;
+          return;
+        }
 
-        document.querySelectorAll('[data-cat]').forEach(function (btn) {
-          btn.onclick = function () { activeCat = btn.getAttribute('data-cat'); render(); };
-        });
+        var pendingList = Object.keys(pendingCart).map(function (id) {
+          var p = products.find(function (x) { return x.id === id; });
+          return p ? Object.assign({}, p, { qty: pendingCart[id].qty, note: pendingCart[id].note }) : null;
+        }).filter(Boolean);
+        var pCount = pendingList.reduce(function (s, i) { return s + i.qty; }, 0);
+        var pTotal = pendingList.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
+        var sCount = submittedItems.reduce(function (s, i) { return s + i.qty; }, 0);
+        var sTotal = submittedItems.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
 
-        document.querySelectorAll('[data-add]').forEach(function (btn) {
-          btn.onclick = function () {
-            var id = btn.getAttribute('data-add');
-            var p = products.find(function (x) { return x.id === id; });
-            if (!p) return;
-            var found = bag.find(function (x) { return x.productId === p.id; });
-            if (found) found.qty += 1;
-            else bag.push({ productId: p.id, sku: p.sku, name: p.name, price: p.price, costPrice: p.costPrice || 0, unit: p.unit, qty: 1, imageUrl: p.imageUrl });
-            render();
-          };
-        });
+        dock.innerHTML = '<div class="max-w-5xl mx-auto px-3.5 sm:px-5 py-3 space-y-2.5">' +
+          '<div class="flex items-center justify-between gap-2 text-xs">' +
+          '<span class="font-semibold text-slate-800">' + (pCount > 0 ? 'Đang chọn: ' + pCount + ' món (' + vnd(pTotal) + ')' : 'Chạm + Chọn món từ thực đơn') + '</span>' +
+          '<button id="btn-view-sub" type="button" class="text-[#0F766E] font-semibold underline-offset-2 ' + (sCount > 0 ? 'underline' : 'opacity-60') + '">Đã gọi: ' + sCount + ' món · ' + vnd(sTotal) + '</button>' +
+          '</div>' +
+          '<div class="grid grid-cols-2 gap-2.5">' +
+          '<button id="btn-submit-order" type="button" ' + (pCount === 0 ? 'disabled' : '') + ' class="min-h-[46px] px-3 bg-[#0F766E] hover:bg-[#0D655E] disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-bold rounded-xl transition-colors">' +
+          (pCount > 0 ? 'Gọi món (' + pCount + ')' : 'Gọi món') + '</button>' +
+          '<button id="btn-support-pay" type="button" class="min-h-[46px] px-3 bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold rounded-xl transition-colors">Thanh toán / Hỗ trợ</button>' +
+          '</div></div>';
 
-        var ts = document.getElementById('table-select');
-        if (ts) ts.onchange = function (e) { tableNumber = Number(e.target.value); render(); };
-        var mc = document.getElementById('mode-card');
-        if (mc) mc.onclick = function () { fnbViewMode = 'card'; render(); };
-        var mg = document.getElementById('mode-grid');
-        if (mg) mg.onclick = function () { fnbViewMode = 'grid'; render(); };
-        var pd = document.getElementById('prev-dish');
-        if (pd) pd.onclick = function () { cardIdx = cardIdx === 0 ? list.length - 1 : cardIdx - 1; render(); };
-        var nd = document.getElementById('next-dish');
-        if (nd) nd.onclick = function () { cardIdx = (cardIdx + 1) % list.length; render(); };
-
-        document.querySelectorAll('[data-fnb-plus]').forEach(function (btn) {
-          btn.onclick = function () {
-            var id = btn.getAttribute('data-fnb-plus');
-            var cur = pendingCart[id] || { qty: 0, note: '' };
-            cur.qty += 1;
-            pendingCart[id] = cur;
-            render();
-          };
-        });
-        document.querySelectorAll('[data-fnb-minus]').forEach(function (btn) {
-          btn.onclick = function () {
-            var id = btn.getAttribute('data-fnb-minus');
-            var cur = pendingCart[id];
-            if (!cur) return;
-            cur.qty -= 1;
-            if (cur.qty <= 0) delete pendingCart[id];
-            render();
-          };
-        });
-        document.querySelectorAll('[data-fnb-note]').forEach(function (inp) {
-          inp.oninput = function (e) {
-            var id = inp.getAttribute('data-fnb-note');
-            var cur = pendingCart[id] || { qty: 1, note: '' };
-            cur.note = e.target.value;
-            pendingCart[id] = cur;
-          };
-        });
+        var subViewBtn = document.getElementById('btn-view-sub');
+        if (subViewBtn) subViewBtn.onclick = openSubmittedModal;
 
         var subBtn = document.getElementById('btn-submit-order');
         if (subBtn) subBtn.onclick = async function () {
@@ -322,62 +359,143 @@
           submittedItems = submittedItems.concat(items);
           pendingCart = {};
           var total = submittedItems.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
-          await postGas('placeOrder', {
+          var ok = await postGas('placeOrder', {
             tableNumber: tableNumber,
             status: 'occupied',
             totalAmount: total,
             lastOrderId: 'B' + tableNumber + '-' + Date.now().toString().slice(-4),
             items: submittedItems
           });
-          render();
+          renderMenu();
+          renderDock();
+          if (ok) showToast('Đã gửi đơn Bàn ' + tableNumber + ' tới bếp!');
         };
 
-        var payBtn = document.getElementById('btn-req-pay');
-        if (payBtn) payBtn.onclick = async function () {
-          var total = submittedItems.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
-          await postGas('requestPayment', {
-            tableNumber: tableNumber,
-            status: 'payment_requested',
-            totalAmount: total,
-            lastOrderId: 'PAY-B' + tableNumber,
-            items: submittedItems
-          });
-          showQRModal('Tạm tính Bàn ' + tableNumber, total, 'BAN ' + tableNumber);
-        };
+        document.getElementById('btn-support-pay').onclick = openSupportAndPaySheet;
       }
 
-      function openBagModal() {
-        var root = document.getElementById('modal-root');
-        var total = bag.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
-        root.innerHTML = '<div class="fixed inset-0 z-50 bg-slate-950/50 flex justify-end">' +
-          '<div class="w-full max-w-md bg-white h-full p-5 flex flex-col justify-between">' +
-          '<div class="flex items-center justify-between border-b pb-3"><h3 class="text-lg font-bold">Giỏ hàng mang đi</h3><button id="close-bag" class="text-sm text-slate-500">Đóng</button></div>' +
-          '<div class="flex-1 overflow-y-auto py-4 space-y-3">' +
-          (bag.length ? bag.map(function (i) {
-            return '<div class="flex justify-between text-sm border-b pb-2"><span>' + i.qty + ' × ' + esc(i.name) + '</span><span class="tabular-nums font-bold">' + vnd(i.price * i.qty) + '</span></div>';
-          }).join('') : '<p class="text-sm text-slate-500 text-center py-8">Giỏ hàng trống.</p>') +
-          '</div>' +
-          '<div class="border-t pt-4 space-y-3">' +
-          '<div class="flex justify-between font-bold text-base"><span>Tổng cộng</span><span class="tabular-nums text-[#0F766E]">' + vnd(total) + '</span></div>' +
-          '<button id="bag-pay" ' + (!bag.length ? 'disabled' : '') + ' class="w-full py-3 bg-[#0F766E] disabled:bg-slate-200 text-white text-sm font-semibold rounded-xl">Thanh toán VietQR</button>' +
-          '</div></div></div>';
-        document.getElementById('close-bag').onclick = function () { root.innerHTML = ''; };
-        document.getElementById('bag-pay').onclick = function () {
-          showQRModal('Thanh toán đơn mang đi', total, 'MANG DI');
-        };
+      function renderMenu() {
+        var app = document.getElementById('app');
+        var list = products.filter(function (p) {
+          var catOk = activeCat === 'Tất cả' || p.category === activeCat;
+          var qOk = !search || noAccent(p.name).includes(noAccent(search)) || noAccent(p.sku).includes(noAccent(search));
+          return catOk && qOk;
+        });
+
+        if (!list.length) {
+          app.innerHTML = '<div class="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-500">Không tìm thấy món phù hợp.</div>';
+          return;
+        }
+
+        app.innerHTML = '<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">' +
+          list.map(function (p) {
+            var out = p.status === 'Hết hàng' || p.stock <= 0;
+            var cur = config.model === 'retail'
+              ? (function () { var f = bag.find(function (x) { return x.productId === p.id; }); return { qty: f ? f.qty : 0, note: '' }; })()
+              : (pendingCart[p.id] || { qty: 0, note: '' });
+            var imgHTML = p.imageUrl
+              ? '<img src="' + esc(p.imageUrl) + '" data-fallback="' + esc(p.name) + '" alt="' + esc(p.name) + '" class="w-full h-full object-cover" />'
+              : fallbackThumbHTML(p.name);
+
+            return '<article class="bg-white border border-slate-200/90 rounded-2xl overflow-hidden flex flex-col">' +
+              '<div class="relative aspect-[4/3] bg-slate-100 overflow-hidden">' + imgHTML +
+              (cur.qty > 0 ? '<span class="absolute top-2 right-2 px-2 py-0.5 bg-[#0F766E] text-white text-xs font-bold rounded-lg shadow">×' + cur.qty + '</span>' : '') +
+              '</div>' +
+              '<div class="p-3 flex-1 flex flex-col justify-between gap-2">' +
+              '<div>' +
+              '<p class="text-[11px] text-slate-500 truncate">' + esc(p.category) + (out ? ' · Hết hàng' : '') + '</p>' +
+              '<h2 class="text-[13px] sm:text-sm font-bold text-slate-900 leading-snug line-clamp-2 mt-0.5">' + esc(p.name) + '</h2>' +
+              (p.description ? '<p class="text-[11px] text-slate-500 mt-1 line-clamp-1">' + esc(p.description) + '</p>' : '') +
+              '</div>' +
+              '<div class="space-y-2 pt-1">' +
+              '<div class="flex items-center justify-between gap-1.5">' +
+              '<span class="text-sm font-bold tabular-nums text-[#0F766E]">' + vnd(p.price) + '</span>' +
+              (cur.qty === 0
+                ? '<button data-plus="' + esc(p.id) + '" ' + (out ? 'disabled' : '') + ' class="px-3 py-1.5 min-h-[36px] bg-teal-50 hover:bg-teal-100 disabled:bg-slate-100 disabled:text-slate-400 text-[#0F766E] text-xs font-bold rounded-xl whitespace-nowrap">+ Chọn</button>'
+                : '<div class="flex items-center gap-1">' +
+                  '<button data-minus="' + esc(p.id) + '" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-700 font-bold flex items-center justify-center">−</button>' +
+                  '<span class="w-5 text-center text-xs font-bold tabular-nums">' + cur.qty + '</span>' +
+                  '<button data-plus="' + esc(p.id) + '" class="w-8 h-8 rounded-lg bg-[#0F766E] text-white font-bold flex items-center justify-center">+</button>' +
+                  '</div>'
+              ) +
+              '</div>' +
+              (config.model !== 'retail' && cur.qty > 0
+                ? '<input data-note="' + esc(p.id) + '" value="' + esc(cur.note) + '" placeholder="Ghi chú món..." class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-[#0F766E]" />'
+                : '') +
+              '</div></div></article>';
+          }).join('') +
+          '</div>';
+
+        bindImages();
+
+        app.querySelectorAll('[data-plus]').forEach(function (btn) {
+          btn.onclick = function () {
+            var id = btn.getAttribute('data-plus');
+            if (config.model === 'retail') {
+              var p = products.find(function (x) { return x.id === id; });
+              if (!p) return;
+              var found = bag.find(function (x) { return x.productId === id; });
+              if (found) found.qty += 1;
+              else bag.push({ productId: p.id, sku: p.sku, name: p.name, price: p.price, costPrice: p.costPrice || 0, unit: p.unit, qty: 1, imageUrl: p.imageUrl });
+              renderHeaderAndCats();
+            } else {
+              var cur = pendingCart[id] || { qty: 0, note: '' };
+              cur.qty += 1;
+              pendingCart[id] = cur;
+            }
+            renderMenu();
+            renderDock();
+          };
+        });
+
+        app.querySelectorAll('[data-minus]').forEach(function (btn) {
+          btn.onclick = function () {
+            var id = btn.getAttribute('data-minus');
+            if (config.model === 'retail') {
+              var idx = bag.findIndex(function (x) { return x.productId === id; });
+              if (idx >= 0) {
+                bag[idx].qty -= 1;
+                if (bag[idx].qty <= 0) bag.splice(idx, 1);
+              }
+              renderHeaderAndCats();
+            } else {
+              var cur = pendingCart[id];
+              if (!cur) return;
+              cur.qty -= 1;
+              if (cur.qty <= 0) delete pendingCart[id];
+            }
+            renderMenu();
+            renderDock();
+          };
+        });
+
+        app.querySelectorAll('[data-note]').forEach(function (inp) {
+          inp.oninput = function (e) {
+            var id = inp.getAttribute('data-note');
+            if (pendingCart[id]) pendingCart[id].note = e.target.value;
+          };
+        });
       }
 
+      document.getElementById('search-input').oninput = function (e) {
+        search = e.target.value;
+        renderMenu();
+      };
+
+      var cacheBust = '?t=' + Date.now();
       Promise.all([
-        fetch('./config.json').then(function (r) { return r.json(); }),
-        fetch('./products.json').then(function (r) { return r.json(); })
+        fetch('./config.json' + cacheBust, { cache: 'no-store' }).then(function (r) { return r.json(); }),
+        fetch('./products.json' + cacheBust, { cache: 'no-store' }).then(function (r) { return r.json(); })
       ]).then(function (res) {
         config = res[0];
-        products = res[1];
+        products = Array.isArray(res[1]) ? res[1] : [];
         document.getElementById('shop-name').textContent = config.shopName;
-        document.getElementById('shop-sub').textContent = (config.address || '') + ' · SĐT: ' + (config.phone || '');
-        render();
+        document.getElementById('shop-sub').textContent = (config.address || '') + (config.phone ? ' · ' + config.phone : '');
+        renderHeaderAndCats();
+        renderMenu();
+        renderDock();
       }).catch(function () {
-        document.getElementById('app').innerHTML = '<div class="p-8 text-center text-sm text-red-700">Không tải được dữ liệu cửa hàng (config.json / products.json).</div>';
+        document.getElementById('app').innerHTML = '<div class="p-8 text-center text-sm text-red-700 bg-white rounded-2xl border border-slate-200">Không tải được dữ liệu thực đơn (config.json / products.json).</div>';
       });
     })();
   </script>
