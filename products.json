@@ -1,0 +1,54 @@
+[
+  {
+    "id": "sp-f2",
+    "sku": "MON-02",
+    "name": "Bánh Mì Thịt Nướng Đặc Biệt",
+    "price": 35000,
+    "category": "Món chính",
+    "unit": "Phần",
+    "stock": 40,
+    "status": "Còn hàng",
+    "imageUrl": "/HKDVN/assets/fnb_banh_mi_1794842005808-R0EFz_Yp.jpg",
+    "description": "Thịt heo ướp sả nướng than hoa, pate nhà làm, đồ chua giòn và ớt tươi.",
+    "model": "fnb"
+  },
+  {
+    "id": "sp-f4",
+    "sku": "NUOC-02",
+    "name": "Cà Phê Sữa Đá Phin",
+    "price": 32000,
+    "category": "Cà phê",
+    "unit": "Ly",
+    "stock": 100,
+    "status": "Còn hàng",
+    "imageUrl": "/HKDVN/assets/retail_ca_phe_sua_1794842004343-CkEXEoUn.jpg",
+    "description": "Cà phê phin đậm đà đánh cùng sữa đặc có đường và đá viên tinh khiết.",
+    "model": "fnb"
+  },
+  {
+    "id": "sp-f1",
+    "sku": "MON-01",
+    "name": "Phở Bò Tái Nạm Truyền Thống",
+    "price": 65000,
+    "category": "Món chính",
+    "unit": "Tô",
+    "stock": 50,
+    "status": "Còn hàng",
+    "imageUrl": "/HKDVN/assets/fnb_pho_bo_1794842004947-D6dSApKk.jpg",
+    "description": "Nước dùng ninh xương bò 12 giờ cùng thảo quả, quế hồi. Kèm thịt tái mềm và rau thơm tươi.",
+    "model": "fnb"
+  },
+  {
+    "id": "sp-f3",
+    "sku": "NUOC-01",
+    "name": "Trà Đào Cam Sả Đá Lạnh",
+    "price": 42000,
+    "category": "Trà & Giải khát",
+    "unit": "Ly",
+    "stock": 80,
+    "status": "Còn hàng",
+    "imageUrl": "/HKDVN/assets/fnb_tra_dao_cam_sa_1794842005902-BHdI0rRR.jpg",
+    "description": "Trà đen ủ đậm kết hợp sả đập dập, cam vàng tươi và miếng đào giòn thanh mát.",
+    "model": "fnb"
+  }
+]
