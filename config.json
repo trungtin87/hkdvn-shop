@@ -14,14 +14,14 @@
   "infra": {
     "driveFolderId": "1i_vffPIZnSse5d3UgKAUE3DFjC2ofkCc",
     "driveFolderName": "QuanLyCuaHang_Data",
-    "spreadsheetId": "1YTTgBDlonoptKSHm4keaYY6rHBM9H51urns0ryMf3tE",
-    "spreadsheetUrl": "https://docs.google.com/spreadsheets/d/1YTTgBDlonoptKSHm4keaYY6rHBM9H51urns0ryMf3tE/edit",
+    "spreadsheetId": "1wT2qycUKsHqjrnfUhwjml1ZcwrDK0pGtU14zViAC4f8",
+    "spreadsheetUrl": "https://docs.google.com/spreadsheets/d/1wT2qycUKsHqjrnfUhwjml1ZcwrDK0pGtU14zViAC4f8/edit",
     "gasManualRequired": false,
     "githubOwner": "trungtin87",
     "githubRepo": "hkdvn-shop",
     "githubPagesUrl": "https://trungtin87.github.io/hkdvn-shop/",
-    "provisionedAt": "2026-11-17T15:04:11.471Z",
-    "gasEndpointUrl": "https://script.google.com/macros/s/AKfycbwWoAIlW_wX32qS9Bw8kL_SlbhfZiz5fu05_AjwQjXVdu-38IbYXDXIksGh_06JfmdNBQ/exec",
-    "scriptId": "1jom-N3ouNAERuB9hTMxWDVZ60EQ4Aui2rSrnFqZpvk_VrlAJH0WF2Yl1"
+    "provisionedAt": "2026-11-17T15:40:54.574Z",
+    "gasEndpointUrl": "https://script.google.com/macros/s/AKfycbw8HlrkYX1opWgFqOv85d_aDXcE5dy9A27GKLl9xzeMZfVQjfO369ZbNDtHWy3c_eAz/exec",
+    "scriptId": "1y5Xlj5ltto68c5_MlFVjwzLc6wQMtl6Sy2VJm8lCVg-nT3QD_o_-fj7M"
   }
 }
