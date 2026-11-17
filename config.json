@@ -4,7 +4,7 @@
   "zaloPhone": "0000000",
   "address": "xxxxxxxx",
   "model": "fnb",
-  "tableCount": 12,
+  "tableCount": 10,
   "bank": {
     "bankBin": "970436",
     "bankShortName": "Vietcombank",
@@ -20,7 +20,7 @@
     "githubOwner": "trungtin87",
     "githubRepo": "hkdvn-shop",
     "githubPagesUrl": "https://trungtin87.github.io/hkdvn-shop/",
-    "provisionedAt": "2026-11-17T15:01:26.612Z",
+    "provisionedAt": "2026-11-17T15:04:11.471Z",
     "gasEndpointUrl": "https://script.google.com/macros/s/AKfycbwWoAIlW_wX32qS9Bw8kL_SlbhfZiz5fu05_AjwQjXVdu-38IbYXDXIksGh_06JfmdNBQ/exec",
     "scriptId": "1jom-N3ouNAERuB9hTMxWDVZ60EQ4Aui2rSrnFqZpvk_VrlAJH0WF2Yl1"
   }
