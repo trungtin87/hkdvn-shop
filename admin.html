@@ -71,7 +71,7 @@
     (function () {
       var FIREBASE_CFG = {"projectId":"gen-lang-client-0544945813","appId":"1:203283320629:web:b2533ccf4764231ade467c","apiKey":"AIzaSyB_7Gya-I3gONh1XPhVXmI5Gqw1Ezd-dV0","authDomain":"gen-lang-client-0544945813.firebaseapp.com","storageBucket":"gen-lang-client-0544945813.firebasestorage.app","messagingSenderId":"203283320629","measurementId":"","oAuthClientId":"203283320629-fioca2vsnfjqa7aecuhhd6d691buum8l.apps.googleusercontent.com","recaptchaSiteKey":""};
       var BANKS = [{"bin":"970436","shortName":"Vietcombank","fullName":"Ngân hàng TMCP Ngoại thương Việt Nam"},{"bin":"970407","shortName":"Techcombank","fullName":"Ngân hàng TMCP Kỹ thương Việt Nam"},{"bin":"970422","shortName":"MBBank","fullName":"Ngân hàng TMCP Quân đội"},{"bin":"970418","shortName":"BIDV","fullName":"Ngân hàng TMCP Đầu tư và Phát triển VN"},{"bin":"970415","shortName":"VietinBank","fullName":"Ngân hàng TMCP Công thương Việt Nam"},{"bin":"970416","shortName":"ACB","fullName":"Ngân hàng TMCP Á Châu"},{"bin":"970432","shortName":"VPBank","fullName":"Ngân hàng TMCP Việt Nam Thịnh Vượng"},{"bin":"970423","shortName":"TPBank","fullName":"Ngân hàng TMCP Tiên Phong"},{"bin":"970403","shortName":"Sacombank","fullName":"Ngân hàng TMCP Sài Gòn Thương Tín"},{"bin":"970405","shortName":"Agribank","fullName":"Ngân hàng Nông nghiệp & PTNT VN"}];
-      var GAS_CODE_TEMPLATE = "// HKDVN BYOB Backend - Tự động triển khai cho Google Sheets ID: __HKDVN_SHEET_ID__\nconst SHEET_ID = '__HKDVN_SHEET_ID__';\n\nfunction safeParseItems(raw) {\n  try {\n    const parsed = JSON.parse(raw || '[]');\n    return Array.isArray(parsed) ? parsed : [];\n  } catch (err) {\n    return [];\n  }\n}\n\nfunction doGet(e) {\n  const ss = SpreadsheetApp.openById(SHEET_ID);\n  const since = (e && e.parameter && e.parameter.since) || '';\n  const sheet = ss.getSheetByName('DonHienTai');\n  const rows = sheet ? sheet.getDataRange().getValues() : [];\n  const orders = [];\n  let latestUpdate = '';\n  for (let i = 1; i < rows.length; i++) {\n    const r = rows[i];\n    if (!r[0]) continue;\n    const updatedAt = String(r[4] || '');\n    if (updatedAt > latestUpdate) latestUpdate = updatedAt;\n    const lastOrderId = String(r[3] || '');\n    orders.push({\n      tableNumber: Number(r[0]),\n      status: String(r[1] || 'occupied'),\n      totalAmount: Number(r[2] || 0),\n      lastOrderId: lastOrderId,\n      updatedAt: updatedAt,\n      items: safeParseItems(r[5])\n    });\n  }\n  if (since && latestUpdate && since === latestUpdate) {\n    return jsonOut({ unchanged: true, updatedAt: latestUpdate });\n  }\n  return jsonOut({ unchanged: false, updatedAt: latestUpdate, orders: orders });\n}\n\nfunction doPost(e) {\n  const lock = LockService.getScriptLock();\n  lock.waitLock(5000);\n  try {\n    const ss = SpreadsheetApp.openById(SHEET_ID);\n    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');\n    const now = new Date().toISOString();\n\n    if (\n      body.action === 'placeOrder' ||\n      body.action === 'requestPayment' ||\n      body.action === 'callSupport' ||\n      body.action === 'ackSupport'\n    ) {\n      const sheet = ss.getSheetByName('DonHienTai');\n      const rows = sheet.getDataRange().getValues();\n      let rowIndex = -1;\n      let existingRow = null;\n      for (let i = 1; i < rows.length; i++) {\n        if (Number(rows[i][0]) === Number(body.tableNumber)) {\n          rowIndex = i + 1;\n          existingRow = rows[i];\n          break;\n        }\n      }\n\n      let nextItems = body.items;\n      let nextTotal = body.totalAmount;\n      if (existingRow && (body.action === 'callSupport' || body.action === 'ackSupport')) {\n        if (!Array.isArray(nextItems) || nextItems.length === 0) {\n          nextItems = safeParseItems(existingRow[5]);\n          nextTotal = Number(existingRow[2] || 0);\n        }\n      }\n\n      if (body.action === 'ackSupport' && (!nextItems || nextItems.length === 0)) {\n        if (rowIndex > 0) sheet.deleteRow(rowIndex);\n        return jsonOut({ ok: true, updatedAt: now });\n      }\n\n      const nextStatus =\n        body.action === 'ackSupport'\n          ? 'occupied'\n          : body.status ||\n            (body.action === 'requestPayment'\n              ? 'payment_requested'\n              : body.action === 'callSupport'\n                ? 'support_requested'\n                : 'occupied');\n\n      const rowData = [\n        body.tableNumber,\n        nextStatus,\n        nextTotal || 0,\n        body.lastOrderId || (existingRow ? existingRow[3] : ''),\n        now,\n        JSON.stringify(nextItems || [])\n      ];\n      if (rowIndex > 0) {\n        sheet.getRange(rowIndex, 1, 1, 6).setValues([rowData]);\n      } else {\n        sheet.appendRow(rowData);\n      }\n      return jsonOut({ ok: true, updatedAt: now });\n    }\n\n    if (body.action === 'recordInvoice') {\n      const revSheet = ss.getSheetByName('DoanhThu');\n      const detailSheet = ss.getSheetByName('ChiTietDonHang');\n      const inv = body.invoice;\n      revSheet.appendRow([\n        inv.id, inv.createdAt, inv.model, inv.customerOrTable,\n        inv.totalAmount, inv.totalCost, inv.profit, inv.paymentMethod,\n        JSON.stringify(inv.items || [])\n      ]);\n      (inv.items || []).forEach(function(item) {\n        detailSheet.appendRow([inv.id, inv.createdAt, item.sku, item.name, item.qty, item.price, item.note || '']);\n      });\n      if (body.clearTableNumber) {\n        const liveSheet = ss.getSheetByName('DonHienTai');\n        const rows = liveSheet.getDataRange().getValues();\n        for (let i = rows.length - 1; i >= 1; i--) {\n          if (Number(rows[i][0]) === Number(body.clearTableNumber)) {\n            liveSheet.deleteRow(i + 1);\n          }\n        }\n      }\n      return jsonOut({ ok: true });\n    }\n\n    return jsonOut({ ok: false, error: 'Unknown action' });\n  } finally {\n    lock.releaseLock();\n  }\n}\n\nfunction jsonOut(obj) {\n  return ContentService\n    .createTextOutput(JSON.stringify(obj))\n    .setMimeType(ContentService.MimeType.JSON);\n}\n";
+      var GAS_CODE_TEMPLATE = "// HKDVN BYOB Backend - Tự động triển khai cho Google Sheets ID: __HKDVN_SHEET_ID__\nconst SHEET_ID = '__HKDVN_SHEET_ID__';\nconst CACHE_KEY = 'hkdvn_live_orders_v1_' + SHEET_ID;\n\nfunction safeParseItems(raw) {\n  try {\n    const parsed = JSON.parse(raw || '[]');\n    return Array.isArray(parsed) ? parsed : [];\n  } catch (err) {\n    return [];\n  }\n}\n\nfunction buildOrdersFromSheet(sheet) {\n  const rows = sheet ? sheet.getDataRange().getValues() : [];\n  const orders = [];\n  let latestUpdate = '';\n  for (let i = 1; i < rows.length; i++) {\n    const r = rows[i];\n    if (!r[0]) continue;\n    const updatedAt = String(r[4] || '');\n    if (updatedAt > latestUpdate) latestUpdate = updatedAt;\n    orders.push({\n      tableNumber: Number(r[0]),\n      status: String(r[1] || 'occupied'),\n      totalAmount: Number(r[2] || 0),\n      lastOrderId: String(r[3] || ''),\n      updatedAt: updatedAt,\n      items: safeParseItems(r[5])\n    });\n  }\n  return { updatedAt: latestUpdate, orders: orders };\n}\n\nfunction syncLiveCache(ss) {\n  const sheet = ss.getSheetByName('DonHienTai');\n  const payload = buildOrdersFromSheet(sheet);\n  try {\n    const json = JSON.stringify(payload);\n    if (json.length < 95000) {\n      CacheService.getScriptCache().put(CACHE_KEY, json, 21600);\n    }\n  } catch (err) {}\n  return payload;\n}\n\nfunction doGet(e) {\n  const since = (e && e.parameter && e.parameter.since) || '';\n  const cache = CacheService.getScriptCache();\n  let payload = null;\n  try {\n    const cached = cache.get(CACHE_KEY);\n    if (cached) payload = JSON.parse(cached);\n  } catch (err) {\n    payload = null;\n  }\n\n  if (!payload) {\n    const ss = SpreadsheetApp.openById(SHEET_ID);\n    payload = syncLiveCache(ss);\n  }\n\n  if (since && payload.updatedAt && since === payload.updatedAt) {\n    return jsonOut({ unchanged: true, updatedAt: payload.updatedAt });\n  }\n  if (since && !payload.updatedAt && since === '__EMPTY__') {\n    return jsonOut({ unchanged: true, updatedAt: '' });\n  }\n  return jsonOut({ unchanged: false, updatedAt: payload.updatedAt || '', orders: payload.orders || [] });\n}\n\nfunction doPost(e) {\n  const lock = LockService.getScriptLock();\n  lock.waitLock(5000);\n  try {\n    const ss = SpreadsheetApp.openById(SHEET_ID);\n    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');\n    const now = new Date().toISOString();\n\n    if (\n      body.action === 'placeOrder' ||\n      body.action === 'requestPayment' ||\n      body.action === 'callSupport' ||\n      body.action === 'ackSupport'\n    ) {\n      const sheet = ss.getSheetByName('DonHienTai');\n      const rows = sheet.getDataRange().getValues();\n      let rowIndex = -1;\n      let existingRow = null;\n      for (let i = 1; i < rows.length; i++) {\n        if (Number(rows[i][0]) === Number(body.tableNumber)) {\n          rowIndex = i + 1;\n          existingRow = rows[i];\n          break;\n        }\n      }\n\n      let nextItems = body.items;\n      let nextTotal = body.totalAmount;\n      if (existingRow && (body.action === 'callSupport' || body.action === 'ackSupport')) {\n        if (!Array.isArray(nextItems) || nextItems.length === 0) {\n          nextItems = safeParseItems(existingRow[5]);\n          nextTotal = Number(existingRow[2] || 0);\n        }\n      }\n\n      if (body.action === 'ackSupport' && (!nextItems || nextItems.length === 0)) {\n        if (rowIndex > 0) sheet.deleteRow(rowIndex);\n        syncLiveCache(ss);\n        return jsonOut({ ok: true, updatedAt: now });\n      }\n\n      const nextStatus =\n        body.action === 'ackSupport'\n          ? 'occupied'\n          : body.status ||\n            (body.action === 'requestPayment'\n              ? 'payment_requested'\n              : body.action === 'callSupport'\n                ? 'support_requested'\n                : 'occupied');\n\n      const rowData = [\n        body.tableNumber,\n        nextStatus,\n        nextTotal || 0,\n        body.lastOrderId || (existingRow ? existingRow[3] : ''),\n        now,\n        JSON.stringify(nextItems || [])\n      ];\n      if (rowIndex > 0) {\n        sheet.getRange(rowIndex, 1, 1, 6).setValues([rowData]);\n      } else {\n        sheet.appendRow(rowData);\n      }\n      syncLiveCache(ss);\n      return jsonOut({ ok: true, updatedAt: now });\n    }\n\n    if (body.action === 'recordInvoice') {\n      const revSheet = ss.getSheetByName('DoanhThu');\n      const detailSheet = ss.getSheetByName('ChiTietDonHang');\n      const inv = body.invoice;\n      revSheet.appendRow([\n        inv.id, inv.createdAt, inv.model, inv.customerOrTable,\n        inv.totalAmount, inv.totalCost, inv.profit, inv.paymentMethod,\n        JSON.stringify(inv.items || [])\n      ]);\n      (inv.items || []).forEach(function(item) {\n        detailSheet.appendRow([inv.id, inv.createdAt, item.sku, item.name, item.qty, item.price, item.note || '']);\n      });\n      if (body.clearTableNumber) {\n        const liveSheet = ss.getSheetByName('DonHienTai');\n        const rows = liveSheet.getDataRange().getValues();\n        for (let i = rows.length - 1; i >= 1; i--) {\n          if (Number(rows[i][0]) === Number(body.clearTableNumber)) {\n            liveSheet.deleteRow(i + 1);\n          }\n        }\n        syncLiveCache(ss);\n      }\n      return jsonOut({ ok: true });\n    }\n\n    return jsonOut({ ok: false, error: 'Unknown action' });\n  } finally {\n    lock.releaseLock();\n  }\n}\n\nfunction jsonOut(obj) {\n  return ContentService\n    .createTextOutput(JSON.stringify(obj))\n    .setMimeType(ContentService.MimeType.JSON);\n}\n";
       var WORKSPACE_SCOPES = [
         'https://www.googleapis.com/auth/drive.file',
         'https://www.googleapis.com/auth/spreadsheets',
@@ -107,6 +107,7 @@
       var compressedImg = null;
       var pollTimer = null;
       var lastSnapshot = {};
+      var lastPollSince = '';
       var firstPollDone = false;
       var notifications = [];
       var unreadCount = 0;
@@ -114,12 +115,17 @@
       var syncStatusText = 'Đang kiểm tra kết nối...';
       var syncHasError = false;
       var pendingDeleteId = null;
+      var editingProdId = null;
+      var catalogSearch = '';
+      var scanningSku = false;
+      var skuStream = null;
 
       // Firebase Auth & Google Workspace state (access token kept strictly in memory)
       var fbAuth = null;
       var googleUser = null;
       var googleAccessToken = null;
       var googleAuthError = '';
+      var googleAuthErrorDomain = '';
       var ghVerifyStatus = '';
       var gasSetupLog = [];
       var gasBusy = false;
@@ -311,7 +317,7 @@
         } catch (e) { return []; }
       }
 
-      async function pollGasOrders() {
+      async function pollGasOrders(forceFull) {
         var url = getGasUrl();
         if (!url) {
           var localOrders = readLiveBridgeOrders();
@@ -324,7 +330,8 @@
         try {
           // IMPORTANT: Do NOT pass { cache: 'no-store' } on cross-origin Google Apps Script URLs
           // because Cache-Control/Pragma triggers CORS preflight which Apps Script rejects.
-          var res = await fetch(url + '?action=poll&_=' + Date.now());
+          var sinceParam = (!forceFull && firstPollDone && lastPollSince) ? ('&since=' + encodeURIComponent(lastPollSince)) : '';
+          var res = await fetch(url + '?action=poll' + sinceParam + '&_=' + Date.now());
           var txt = await res.text();
           var data = null;
           try {
@@ -338,7 +345,13 @@
           syncStatusText = 'Đã đồng bộ lúc ' + new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           syncHasError = false;
           updateSyncStatusUI();
+          if (data && data.unchanged) {
+            firstPollDone = true;
+            if (data.updatedAt) lastPollSince = data.updatedAt;
+            return;
+          }
           if (data && Array.isArray(data.orders)) {
+            lastPollSince = data.updatedAt || '__EMPTY__';
             applyIncomingOrders(data.orders);
           }
         } catch (e) {
@@ -397,6 +410,7 @@
 
       async function signInGoogle(emailHint) {
         googleAuthError = '';
+        googleAuthErrorDomain = '';
         if (!fbAuth || !window.firebase) {
           googleAuthError = 'Không tải được thư viện đăng nhập Google. Vui lòng kiểm tra kết nối mạng.';
           render();
@@ -415,9 +429,11 @@
           googleAccessToken = cred.accessToken;
           render();
         } catch (err) {
-          var msg = err && err.message ? err.message : 'Lỗi đăng nhập Google.';
-          if (msg.indexOf('unauthorized-domain') >= 0) {
-            msg = 'Tên miền ' + location.hostname + ' chưa nằm trong Danh sách tên miền được phép (Authorized Domains) của Firebase Auth. Bạn vẫn có thể tự tạo Google Sheet và dán đường dẫn Apps Script (/exec) ở mục bên dưới.';
+          var code = err && err.code ? String(err.code) : '';
+          var msg = err && err.message ? String(err.message) : 'Lỗi đăng nhập Google.';
+          if (code === 'auth/unauthorized-domain' || msg.indexOf('unauthorized-domain') >= 0) {
+            googleAuthErrorDomain = location.hostname;
+            msg = 'Tên miền ' + location.hostname + ' chưa nằm trong Danh sách tên miền được phép (Authorized Domains) của Firebase Auth.';
           }
           googleAuthError = msg;
           render();
@@ -554,6 +570,31 @@
           gasBusy = false;
           render();
         }
+      }
+
+      async function syncCatalogToGoogleSheet(list) {
+        var eff = getEffectiveInfra();
+        if (!googleAccessToken || !eff.spreadsheetId) return false;
+        var rows = [
+          ['SKU / Barcode', 'Tên sản phẩm', 'Danh mục', 'Giá bán', 'Giá vốn', 'Tồn kho', 'Đơn vị', 'Trạng thái', 'Cập nhật']
+        ].concat((list || []).map(function (p) {
+          return [
+            p.sku || '',
+            p.name || '',
+            p.category || 'Chung',
+            Number(p.price) || 0,
+            Number(p.costPrice) || 0,
+            Number(p.stock) || 0,
+            p.unit || 'Phần',
+            p.status || 'Còn hàng',
+            p.updatedAt || new Date().toISOString()
+          ];
+        }));
+        await gFetch('https://sheets.googleapis.com/v4/spreadsheets/' + eff.spreadsheetId + '/values/DanhMucHangHoa!A1:I' + rows.length + '?valueInputOption=USER_ENTERED', googleAccessToken, {
+          method: 'PUT',
+          body: JSON.stringify({ values: rows })
+        });
+        return true;
       }
 
       async function syncInvoicesToSheet() {
@@ -915,51 +956,133 @@
 
             var goSet = document.getElementById('go-settings-ops');
             if (goSet) goSet.onclick = function () { activeTab = 'settings'; render(); };
-            document.getElementById('btn-refresh-now').onclick = function () { pollGasOrders(); };
+            document.getElementById('btn-refresh-now').onclick = function () { pollGasOrders(true); };
             document.getElementById('btn-gen-qr').onclick = openQrPrintModal;
             root.querySelectorAll('[data-open-table]').forEach(function (b) {
               b.onclick = function () { openTableDetailSheet(Number(b.getAttribute('data-open-table'))); };
             });
           }
         } else if (activeTab === 'catalog') {
-          root.innerHTML = '<div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
+          var editItem = editingProdId ? products.find(function (x) { return x.id === editingProdId; }) : null;
+          var defCat = config.model === 'retail' ? 'Đồ uống đóng chai' : 'Món chính';
+          var defUnit = config.model === 'retail' ? 'Chai' : 'Phần';
+          var filteredProducts = products.filter(function (p) {
+            if (!catalogSearch) return true;
+            var q = catalogSearch.toLowerCase();
+            return String(p.name || '').toLowerCase().indexOf(q) >= 0 || String(p.sku || '').toLowerCase().indexOf(q) >= 0 || String(p.category || '').toLowerCase().indexOf(q) >= 0;
+          });
+
+          root.innerHTML = '<div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">' +
             '<form id="prod-form" class="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-4 space-y-3">' +
             '<div class="flex items-center justify-between gap-2">' +
-            '<h2 class="text-base font-bold text-slate-900">Thêm sản phẩm &amp; Nén ảnh WebP</h2>' +
+            '<h2 class="text-base font-bold text-slate-900">' + (editItem ? 'Chỉnh sửa sản phẩm / món' : 'Thêm sản phẩm &amp; Nén ảnh WebP') + '</h2>' +
+            '<div class="flex items-center gap-2">' +
+            (editItem ? '<button id="btn-cancel-edit" type="button" class="text-xs font-semibold text-slate-600 underline">Hủy sửa</button>' : '') +
             (!ghToken ? '<button id="go-settings-cat" type="button" class="text-xs font-semibold text-amber-700 underline">Cài đặt Token</button>' : '') +
-            '</div>' +
+            '</div></div>' +
+
             '<label for="img-file" class="flex items-center justify-between gap-3 p-3 bg-slate-50 border border-dashed border-slate-300 rounded-xl cursor-pointer">' +
-            '<span class="text-xs font-semibold text-slate-700">Chụp hoặc chọn ảnh (tự nén WebP)</span>' +
+            '<span class="text-xs font-semibold text-slate-700">Chụp hoặc chọn ảnh (tự cắt vuông 800px · WebP)</span>' +
             '<span class="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-[#0F766E] shrink-0">Chọn ảnh</span>' +
             '<input id="img-file" type="file" accept="image/*" capture="environment" class="sr-only" />' +
             '</label>' +
-            '<div id="img-preview-wrap" class="hidden items-center gap-3 p-2.5 bg-teal-50/50 border border-teal-200 rounded-xl">' +
-            '<img id="img-preview" class="w-12 h-12 rounded-lg object-cover" /><p id="img-info" class="text-xs font-medium text-emerald-700"></p></div>' +
-            '<input id="p-name" required placeholder="Tên sản phẩm / món ăn" class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl" />' +
-            '<div class="grid grid-cols-2 gap-2.5">' +
-            '<input id="p-sku" placeholder="Mã SKU" class="w-full min-w-0 px-3 py-2.5 text-sm font-mono border border-slate-200 rounded-xl" />' +
-            '<input id="p-price" required type="number" inputmode="numeric" placeholder="Giá bán (VNĐ)" class="w-full min-w-0 px-3 py-2.5 text-sm font-mono border border-slate-200 rounded-xl" />' +
-            '<input id="p-cat" value="Món chính" placeholder="Danh mục" class="w-full min-w-0 px-3 py-2.5 text-sm border border-slate-200 rounded-xl" />' +
-            '<input id="p-unit" value="Phần" placeholder="Đơn vị" class="w-full min-w-0 px-3 py-2.5 text-sm border border-slate-200 rounded-xl" />' +
+
+            '<div id="img-preview-wrap" class="' + ((compressedImg || (editItem && editItem.imageUrl)) ? 'flex' : 'hidden') + ' items-center gap-3 p-2.5 bg-teal-50/50 border border-teal-200 rounded-xl">' +
+            '<img id="img-preview" src="' + esc(compressedImg ? compressedImg.dataUrl : (editItem ? editItem.imageUrl : '')) + '" class="w-12 h-12 rounded-lg object-cover bg-white" />' +
+            '<p id="img-info" class="text-xs font-medium text-emerald-700">' + (compressedImg ? ('Đã nén WebP 800×800 (' + compressedImg.kb + 'KB)') : (editItem && editItem.imageUrl ? 'Đang dùng ảnh hiện tại' : '')) + '</p></div>' +
+
+            '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Tên sản phẩm / món ăn</label>' +
+            '<input id="p-name" required value="' + esc(editItem ? editItem.name : '') + '" placeholder="VD: Trà sữa Oolong nướng" class="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl" /></div>' +
+
+            '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Mã vạch / SKU</label>' +
+            '<div class="flex gap-2">' +
+            '<input id="p-sku" value="' + esc(editItem ? editItem.sku : '') + '" placeholder="Quét mã hoặc nhập SKU" class="flex-1 min-w-0 px-3 py-2.5 text-sm font-mono border border-slate-200 rounded-xl" />' +
+            '<button id="btn-scan-sku" type="button" class="px-3 py-2.5 bg-slate-900 text-white text-xs font-bold rounded-xl shrink-0">Quét mã</button>' +
             '</div>' +
-            '<button type="submit" class="w-full min-h-[46px] bg-[#0F766E] text-white text-sm font-bold rounded-xl">Lưu &amp; Xuất bản lên GitHub</button>' +
+            '<video id="sku-video" muted playsinline class="hidden mt-2 w-full h-36 object-cover rounded-xl bg-slate-950"></video></div>' +
+
+            '<div class="grid grid-cols-2 gap-2.5">' +
+            '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Giá bán (VNĐ)</label>' +
+            '<input id="p-price" required type="number" inputmode="numeric" min="0" step="500" value="' + esc(editItem ? editItem.price : '') + '" placeholder="35000" class="w-full min-w-0 px-3 py-2.5 text-sm font-mono border border-slate-200 rounded-xl" /></div>' +
+            '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Giá vốn (tùy chọn)</label>' +
+            '<input id="p-cost" type="number" inputmode="numeric" min="0" step="500" value="' + esc(editItem ? (editItem.costPrice || 0) : '') + '" placeholder="0" class="w-full min-w-0 px-3 py-2.5 text-sm font-mono border border-slate-200 rounded-xl" /></div>' +
+            '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Danh mục</label>' +
+            '<input id="p-cat" value="' + esc(editItem ? editItem.category : defCat) + '" placeholder="Danh mục" class="w-full min-w-0 px-3 py-2.5 text-sm border border-slate-200 rounded-xl" /></div>' +
+            '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Đơn vị tính</label>' +
+            '<input id="p-unit" value="' + esc(editItem ? editItem.unit : defUnit) + '" placeholder="Phần, Ly, Chai" class="w-full min-w-0 px-3 py-2.5 text-sm border border-slate-200 rounded-xl" /></div>' +
+            '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Tồn kho</label>' +
+            '<input id="p-stock" type="number" inputmode="numeric" min="0" value="' + esc(editItem ? (editItem.stock ?? 50) : 50) + '" class="w-full min-w-0 px-3 py-2.5 text-sm font-mono border border-slate-200 rounded-xl" /></div>' +
+            '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Trạng thái</label>' +
+            '<select id="p-status" class="w-full min-w-0 px-3 py-2.5 text-sm border border-slate-200 rounded-xl bg-white">' +
+            '<option value="Còn hàng"' + (!editItem || editItem.status !== 'Hết hàng' ? ' selected' : '') + '>Còn hàng</option>' +
+            '<option value="Hết hàng"' + (editItem && editItem.status === 'Hết hàng' ? ' selected' : '') + '>Hết hàng</option>' +
+            '</select></div></div>' +
+
+            '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Mô tả ngắn</label>' +
+            '<textarea id="p-desc" rows="2" placeholder="Thành phần, ghi chú nổi bật..." class="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl">' + esc(editItem ? (editItem.description || '') : '') + '</textarea></div>' +
+
+            '<button type="submit" class="w-full min-h-[46px] bg-[#0F766E] text-white text-sm font-bold rounded-xl">' + (editItem ? 'Cập nhật &amp; Xuất bản lên GitHub' : 'Lưu &amp; Xuất bản lên GitHub') + '</button>' +
             '<p id="pub-msg" class="text-xs font-medium text-[#0F766E]"></p></form>' +
 
-            '<div class="lg:col-span-7 bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100">' +
-            products.map(function (p) {
+            '<div class="lg:col-span-7 bg-white border border-slate-200 rounded-2xl overflow-hidden">' +
+            '<div class="p-3.5 border-b border-slate-100 space-y-2.5">' +
+            '<div class="flex flex-wrap items-center justify-between gap-2">' +
+            '<h3 class="text-sm font-bold text-slate-900">Danh sách hàng hóa (' + products.length + ')</h3>' +
+            (effInfra.spreadsheetId ? '<button id="btn-sync-cat-sheet" type="button" class="px-3 py-1.5 bg-teal-50 border border-teal-200 text-[#0F766E] text-xs font-bold rounded-xl">Đồng bộ lên Google Sheet</button>' : '') +
+            '</div>' +
+            '<input id="cat-search" type="search" value="' + esc(catalogSearch) + '" placeholder="Tìm tên, SKU hoặc danh mục..." class="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl" />' +
+            '<p id="cat-sheet-msg" class="text-xs font-medium text-[#0F766E]"></p>' +
+            '</div>' +
+            '<div class="divide-y divide-slate-100">' +
+            (filteredProducts.length ? filteredProducts.map(function (p) {
               var confirming = pendingDeleteId === p.id;
-              return '<div class="p-3.5 flex items-center justify-between gap-3"><div class="flex items-center gap-3 min-w-0">' +
+              var isOut = p.status === 'Hết hàng' || (p.stock || 0) <= 0;
+              return '<div class="p-3.5 flex items-center justify-between gap-2.5"><div class="flex items-center gap-3 min-w-0">' +
                 (p.imageUrl ? '<img src="' + esc(p.imageUrl) + '" data-admin-fb="1" class="w-14 h-14 rounded-xl object-cover bg-slate-100 shrink-0" />' : fallbackThumb()) +
                 '<div class="min-w-0"><p class="text-sm font-bold text-slate-900 truncate">' + esc(p.name) + '</p>' +
-                '<p class="text-xs text-slate-500 mt-0.5">' + esc(p.category) + ' · <span class="font-bold tabular-nums text-[#0F766E]">' + vnd(p.price) + '</span></p></div></div>' +
+                '<p class="text-[11px] text-slate-500 truncate mt-0.5">' + esc(p.category) + ' · SKU ' + esc(p.sku) + '</p>' +
+                '<div class="flex flex-wrap items-center gap-2 mt-1 text-xs">' +
+                '<span class="font-bold tabular-nums text-[#0F766E]">' + vnd(p.price) + '/' + esc(p.unit || 'Phần') + '</span>' +
+                '<span class="text-slate-500 tabular-nums">Kho: ' + (p.stock ?? 0) + '</span>' +
+                '<span class="font-semibold ' + (isOut ? 'text-red-700' : 'text-emerald-700') + '">' + esc(p.status || 'Còn hàng') + '</span>' +
+                '</div></div></div>' +
                 (confirming
                   ? '<div class="flex items-center gap-1.5 shrink-0"><button data-del-yes="' + esc(p.id) + '" class="px-2.5 py-1.5 bg-red-700 text-white text-xs font-bold rounded-lg">Xác nhận</button><button data-del-no="1" class="px-2.5 py-1.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-lg">Hủy</button></div>'
-                  : '<button data-del="' + esc(p.id) + '" class="px-3 py-1.5 text-xs text-red-700 font-semibold border border-red-200 rounded-lg shrink-0">Xóa</button>') +
+                  : '<div class="flex items-center gap-1.5 shrink-0"><button data-edit="' + esc(p.id) + '" class="px-2.5 py-1.5 text-xs text-slate-700 font-semibold border border-slate-200 rounded-lg">Sửa</button><button data-del="' + esc(p.id) + '" class="px-2.5 py-1.5 text-xs text-red-700 font-semibold border border-red-200 rounded-lg">Xóa</button></div>') +
                 '</div>';
-            }).join('') + '</div></div>';
+            }).join('') : '<p class="p-8 text-center text-xs text-slate-500">Không có sản phẩm nào phù hợp.</p>') +
+            '</div></div></div>';
 
           var goSetCat = document.getElementById('go-settings-cat');
-          if (goSetCat) goSetCat.onclick = function () { activeTab = 'settings'; render(); };
+          if (goSetCat) goSetCat.onclick = function () { stopSkuScanner(); activeTab = 'settings'; render(); };
+
+          var cancelEditBtn = document.getElementById('btn-cancel-edit');
+          if (cancelEditBtn) cancelEditBtn.onclick = function () { editingProdId = null; compressedImg = null; stopSkuScanner(); render(); };
+
+          var catSearchEl = document.getElementById('cat-search');
+          if (catSearchEl) catSearchEl.oninput = function (e) {
+            catalogSearch = e.target.value;
+            var pos = e.target.selectionStart;
+            render();
+            var nextSearchEl = document.getElementById('cat-search');
+            if (nextSearchEl) { nextSearchEl.focus(); try { nextSearchEl.setSelectionRange(pos, pos); } catch (err) {} }
+          };
+
+          var syncCatSheetBtn = document.getElementById('btn-sync-cat-sheet');
+          if (syncCatSheetBtn) syncCatSheetBtn.onclick = async function () {
+            var msgEl = document.getElementById('cat-sheet-msg');
+            if (!googleAccessToken) {
+              msgEl.textContent = 'Vui lòng vào Cài đặt → Đăng nhập Google (hoặc Làm mới 1 chạm) để đồng bộ Sheet.';
+              return;
+            }
+            msgEl.textContent = 'Đang đồng bộ danh mục lên Google Sheet...';
+            try {
+              await syncCatalogToGoogleSheet(products);
+              msgEl.textContent = 'Đã đồng bộ ' + products.length + ' sản phẩm vào tab DanhMucHangHoa!';
+            } catch (err) {
+              msgEl.textContent = err.message;
+            }
+          };
 
           root.querySelectorAll('img[data-admin-fb]').forEach(function (img) {
             img.onerror = function () {
@@ -979,6 +1102,42 @@
             document.getElementById('img-info').textContent = 'Đã nén WebP 800×800 (' + compressedImg.kb + 'KB)';
           };
 
+          var scanBtn = document.getElementById('btn-scan-sku');
+          if (scanBtn) scanBtn.onclick = async function () {
+            var vid = document.getElementById('sku-video');
+            if (scanningSku) { stopSkuScanner(); vid.classList.add('hidden'); scanBtn.textContent = 'Quét mã'; return; }
+            try {
+              skuStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+              scanningSku = true;
+              scanBtn.textContent = 'Dừng quét';
+              vid.classList.remove('hidden');
+              vid.srcObject = skuStream;
+              await vid.play();
+              if (window.BarcodeDetector) {
+                var detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'code_128', 'qr_code'] });
+                var scanLoop = async function () {
+                  if (!scanningSku || !skuStream) return;
+                  try {
+                    var found = await detector.detect(vid);
+                    if (found && found.length > 0 && found[0].rawValue) {
+                      document.getElementById('p-sku').value = found[0].rawValue.trim();
+                      stopSkuScanner();
+                      vid.classList.add('hidden');
+                      scanBtn.textContent = 'Quét mã';
+                      return;
+                    }
+                  } catch (e) {}
+                  requestAnimationFrame(scanLoop);
+                };
+                requestAnimationFrame(scanLoop);
+              } else {
+                document.getElementById('pub-msg').textContent = 'Trình duyệt chưa hỗ trợ quét tự động BarcodeDetector — vui lòng nhập tay mã SKU.';
+              }
+            } catch (e) {
+              document.getElementById('pub-msg').textContent = 'Không thể mở camera để quét mã vạch.';
+            }
+          };
+
           document.getElementById('prod-form').onsubmit = async function (e) {
             e.preventDefault();
             var msg = document.getElementById('pub-msg');
@@ -989,25 +1148,52 @@
             msg.textContent = 'Đang lưu và xuất bản lên GitHub...';
             try {
               var sku = document.getElementById('p-sku').value.trim() || ('SP-' + Date.now().toString().slice(-5));
-              var imgUrl = '';
+              var imgUrl = editItem ? (editItem.imageUrl || '') : '';
               if (compressedImg) {
-                var imgPath = 'assets/img/' + sku.replace(/[^a-zA-Z0-9_-]/g, '') + '.webp';
+                var imgPath = 'assets/img/' + (sku.replace(/[^a-zA-Z0-9_-]/g, '') || ('sp-' + Date.now())) + '.webp';
                 await ghPut(imgPath, compressedImg.base64, 'Tải ảnh WebP ' + sku);
                 imgUrl = './' + imgPath;
               }
-              products.push({
-                id: 'sp-' + Date.now(), sku: sku, name: document.getElementById('p-name').value.trim(),
-                price: Number(document.getElementById('p-price').value) || 0, costPrice: 0,
-                category: document.getElementById('p-cat').value.trim() || 'Món chính',
-                unit: document.getElementById('p-unit').value.trim() || 'Phần',
-                stock: 50, status: 'Còn hàng', imageUrl: imgUrl, description: '', model: config.model
-              });
-              await ghPut('products.json', toBase64Utf8(JSON.stringify(products, null, 2)), 'Cập nhật danh mục sản phẩm');
+              var nextItem = {
+                id: editingProdId || ('sp-' + Date.now()),
+                sku: sku,
+                name: document.getElementById('p-name').value.trim(),
+                price: Number(document.getElementById('p-price').value) || 0,
+                costPrice: Number(document.getElementById('p-cost').value) || 0,
+                category: document.getElementById('p-cat').value.trim() || defCat,
+                unit: document.getElementById('p-unit').value.trim() || defUnit,
+                stock: Math.max(0, Number(document.getElementById('p-stock').value) || 0),
+                status: document.getElementById('p-status').value || 'Còn hàng',
+                imageUrl: imgUrl,
+                description: document.getElementById('p-desc').value.trim(),
+                model: config.model,
+                updatedAt: new Date().toISOString()
+              };
+              if (editingProdId) {
+                products = products.map(function (x) { return x.id === editingProdId ? nextItem : x; });
+              } else {
+                products.push(nextItem);
+              }
+              await ghPut('products.json', toBase64Utf8(JSON.stringify(products, null, 2)), (editingProdId ? 'Cập nhật sản phẩm ' : 'Thêm sản phẩm ') + nextItem.name);
+              if (googleAccessToken && effInfra.spreadsheetId) {
+                try { await syncCatalogToGoogleSheet(products); } catch (e) {}
+              }
+              editingProdId = null;
               compressedImg = null;
+              stopSkuScanner();
               render();
             } catch (err) { msg.textContent = err.message; }
           };
 
+          root.querySelectorAll('[data-edit]').forEach(function (b) {
+            b.onclick = function () {
+              editingProdId = b.getAttribute('data-edit');
+              compressedImg = null;
+              stopSkuScanner();
+              render();
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+          });
           root.querySelectorAll('[data-del]').forEach(function (b) {
             b.onclick = function () { pendingDeleteId = b.getAttribute('data-del'); render(); };
           });
@@ -1018,8 +1204,12 @@
             b.onclick = async function () {
               var id = b.getAttribute('data-del-yes');
               products = products.filter(function (x) { return x.id !== id; });
+              if (editingProdId === id) editingProdId = null;
               pendingDeleteId = null;
               if (ghToken) await ghPut('products.json', toBase64Utf8(JSON.stringify(products, null, 2)), 'Xóa sản phẩm');
+              if (googleAccessToken && effInfra.spreadsheetId) {
+                try { await syncCatalogToGoogleSheet(products); } catch (e) {}
+              }
               render();
             };
           });
@@ -1046,6 +1236,7 @@
           // SETTINGS TAB: Google Auth + Drive/Sheets/Apps Script Provisioning + /exec + GitHub Token + Shop Info
           var curGas = getGasUrl();
           var sheetIdForCode = effInfra.spreadsheetId || 'NHAP_SPREADSHEET_ID_CUA_BAN';
+          var fbDomainsUrl = 'https://console.firebase.google.com/project/' + encodeURIComponent((FIREBASE_CFG && FIREBASE_CFG.projectId) || '') + '/authentication/settings';
 
           root.innerHTML = '<div class="space-y-5 max-w-3xl mx-auto">' +
 
@@ -1072,7 +1263,15 @@
                 '<svg class="w-5 h-5" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>' +
                 '<span>Đăng nhập bằng Google để tạo Sheet &amp; Apps Script</span></button>'
             ) +
-            (googleAuthError ? '<p class="text-xs text-red-700 leading-relaxed">' + esc(googleAuthError) + '</p>' : '') +
+            (googleAuthError
+              ? '<div class="p-3.5 bg-red-50 border border-red-200 rounded-xl space-y-2 text-xs text-red-800 leading-relaxed">' +
+                '<p class="font-semibold">' + esc(googleAuthError) + '</p>' +
+                (googleAuthErrorDomain
+                  ? '<p class="text-slate-700">• <strong>Cách 1 (Mở đăng nhập Google cho tên miền này):</strong> Chủ dự án vào <a href="' + fbDomainsUrl + '" target="_blank" rel="noreferrer" class="text-[#0F766E] font-bold underline">Firebase Console → Authentication → Settings → Authorized domains</a> rồi bấm <strong>Add domain</strong> và thêm <span class="font-mono font-bold">' + esc(googleAuthErrorDomain) + '</span>.</p>' +
+                    '<p class="text-slate-700">• <strong>Cách 2 (Dùng ngay không cần Firebase):</strong> Tự tạo 1 Google Sheet trên Drive, bấm <strong>Sao chép mã Code.gs</strong> bên dưới, dán vào <strong>Tiện ích mở rộng → Apps Script</strong> và dán link <span class="font-mono">/exec</span> vào mục 2.</p>'
+                  : '') +
+                '</div>'
+              : '') +
             (gasSetupLog.length ? '<div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs text-slate-700">' + gasSetupLog.map(function (l) { return '<p>' + esc(l) + '</p>'; }).join('') + '</div>' : '') +
             (effInfra.spreadsheetUrl ? '<div class="flex flex-wrap items-center justify-between gap-2 text-xs pt-1"><a href="' + esc(effInfra.spreadsheetUrl) + '" target="_blank" rel="noreferrer" class="font-bold text-[#0F766E] underline">Mở Google Sheet dữ liệu cửa hàng</a><button id="btn-copy-codegs" type="button" class="font-semibold text-slate-700 underline">Sao chép mã Code.gs</button></div>' : '<div class="flex justify-end"><button id="btn-copy-codegs" type="button" class="text-xs font-semibold text-[#0F766E] underline">Sao chép mã Code.gs (cài thủ công)</button></div>') +
             '<button id="btn-toggle-guide" type="button" class="text-xs font-semibold text-slate-600 underline">' + (showGasGuide ? 'Ẩn hướng dẫn bật Apps Script' : 'Xem hướng dẫn bật Google Apps Script chi tiết') + '</button>' +
@@ -1214,8 +1413,16 @@
         }
       }
 
+      function stopSkuScanner() {
+        if (skuStream) {
+          try { skuStream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {}
+          skuStream = null;
+        }
+        scanningSku = false;
+      }
+
       document.querySelectorAll('[data-tab]').forEach(function (b) {
-        b.onclick = function () { activeTab = b.getAttribute('data-tab'); render(); };
+        b.onclick = function () { stopSkuScanner(); activeTab = b.getAttribute('data-tab'); render(); };
       });
       document.getElementById('btn-sound').onclick = function () {
         soundEnabled = !soundEnabled;
@@ -1231,6 +1438,12 @@
         }
       });
 
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden && config && config.model === 'fnb') {
+          pollGasOrders(false);
+        }
+      });
+
       updateSoundButton();
       var cacheBust = '?t=' + Date.now();
       Promise.all([
@@ -1243,8 +1456,10 @@
         document.getElementById('admin-shop-title').textContent = config.shopName;
         render();
         if (config.model === 'fnb') {
-          pollGasOrders();
-          pollTimer = setInterval(pollGasOrders, 3000);
+          pollGasOrders(true);
+          pollTimer = setInterval(function () {
+            if (!document.hidden) pollGasOrders(false);
+          }, 5000);
         } else {
           syncStatusText = 'Chế độ Bán lẻ / POS sẵn sàng';
           updateSyncStatusUI();
