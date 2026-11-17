@@ -1,0 +1,21 @@
+{
+  "shopName": "Tạp Hóa Minh Tâm",
+  "phone": "0000000",
+  "zaloPhone": "0000000",
+  "address": "xxxxxxxx",
+  "model": "fnb",
+  "tableCount": 12,
+  "bank": {
+    "bankBin": "970436",
+    "bankShortName": "Vietcombank",
+    "accountNumber": "xxxxxxxx",
+    "accountName": "NGUYEN MINH TAM"
+  },
+  "infra": {
+    "driveFolderId": "1i_vffPIZnSse5d3UgKAUE3DFjC2ofkCc",
+    "driveFolderName": "QuanLyCuaHang_Data",
+    "spreadsheetId": "1gsyr6LUB6LmaaR_1GZEYwO4BGBxdA_RYson2yygVn_U",
+    "spreadsheetUrl": "https://docs.google.com/spreadsheets/d/1gsyr6LUB6LmaaR_1GZEYwO4BGBxdA_RYson2yygVn_U/edit",
+    "gasManualRequired": true
+  }
+}
