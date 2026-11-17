@@ -107,8 +107,8 @@
 
       function getGasUrl() {
         try {
-          var localOverride = localStorage.getItem('hkdvn_gas_override_' + (config && config.infra ? config.infra.githubRepo : ''));
-          if (localOverride) return localOverride;
+          var ov = localStorage.getItem('hkdvn_gas_override_' + (config && config.infra ? config.infra.githubRepo : ''));
+          if (ov) return ov.trim();
         } catch (e) {}
         return config && config.infra && config.infra.gasEndpointUrl ? config.infra.gasEndpointUrl.trim() : '';
       }
@@ -117,7 +117,7 @@
         saveLiveBridge(Object.assign({ action: action }, payload));
         var url = getGasUrl();
         if (!url) {
-          showToast('Đã ghi nhận trên máy. Lưu ý: Chưa cấu hình link Apps Script (/exec) để đồng bộ sang quầy.', true);
+          showToast('Chưa cấu hình Google Apps Script (/exec) trong mục Cài đặt của Trang quản lý.', true);
           return false;
         }
         try {
