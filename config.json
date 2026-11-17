@@ -14,13 +14,14 @@
   "infra": {
     "driveFolderId": "1i_vffPIZnSse5d3UgKAUE3DFjC2ofkCc",
     "driveFolderName": "QuanLyCuaHang_Data",
-    "spreadsheetId": "1LzNMPf8vO0xfs-KT6CC9zVqRJKuuY2P-OpoWhGT_Bp0",
-    "spreadsheetUrl": "https://docs.google.com/spreadsheets/d/1LzNMPf8vO0xfs-KT6CC9zVqRJKuuY2P-OpoWhGT_Bp0/edit",
-    "gasManualRequired": true,
+    "spreadsheetId": "1YTTgBDlonoptKSHm4keaYY6rHBM9H51urns0ryMf3tE",
+    "spreadsheetUrl": "https://docs.google.com/spreadsheets/d/1YTTgBDlonoptKSHm4keaYY6rHBM9H51urns0ryMf3tE/edit",
+    "gasManualRequired": false,
     "githubOwner": "trungtin87",
     "githubRepo": "hkdvn-shop",
     "githubPagesUrl": "https://trungtin87.github.io/hkdvn-shop/",
-    "provisionedAt": "2026-11-17T04:05:28.196Z",
-    "gasEndpointUrl": "trungtincatp@gmail.com is requesting a role on the resource 203283320629.  Requestor’s message: \"test ứng dụng HKDVN\"  Click the following link to investigate and remediate this request for trungtincatp@gmail.com:  console.cloud.google.com/iam-admin/troubleshooter/summary;permissions=resourcemanager.projects.get;token=ASRsI9DDqZ-ZEdc3MuEPLqXtbys7lxgNNt9SeDIZhiPs1VVNb--W1ls6F4IqONQ3nLyL-1gZLm3IHzo5CeJlp_Lbp5_-kR53tEWmaHgilLCfC7cFYHDT6IfyO5rl7UTgl8WhREMbaeNscjme8lLnSzzTOg_IzOJICITja6ylNpDUbJw3?utm_campaign=role_request&utm_source=cloud_console"
+    "provisionedAt": "2026-11-17T15:01:26.612Z",
+    "gasEndpointUrl": "https://script.google.com/macros/s/AKfycbwWoAIlW_wX32qS9Bw8kL_SlbhfZiz5fu05_AjwQjXVdu-38IbYXDXIksGh_06JfmdNBQ/exec",
+    "scriptId": "1jom-N3ouNAERuB9hTMxWDVZ60EQ4Aui2rSrnFqZpvk_VrlAJH0WF2Yl1"
   }
 }
