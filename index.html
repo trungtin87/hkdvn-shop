@@ -100,8 +100,11 @@
       function saveLiveBridge(payload) {
         try {
           var existing = JSON.parse(localStorage.getItem(storageBridgeKey) || '{}');
-          existing[String(payload.tableNumber)] = Object.assign({}, payload, { updatedAt: new Date().toISOString() });
-          localStorage.setItem(storageBridgeKey, JSON.stringify(existing));
+          var key = String(payload.orderKey || payload.orderId || payload.tableNumber || '');
+          if (key) {
+            existing[key] = Object.assign({}, payload, { updatedAt: new Date().toISOString() });
+            localStorage.setItem(storageBridgeKey, JSON.stringify(existing));
+          }
         } catch (e) {}
       }
 
@@ -265,24 +268,245 @@
       function openBagModal() {
         var root = document.getElementById('modal-root');
         var total = bag.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
-        root.innerHTML = '<div id="bag-backdrop" class="fixed inset-0 z-50 bg-slate-950/60 flex items-end sm:items-center justify-center">' +
-          '<div class="w-full max-w-md bg-white rounded-t-3xl sm:rounded-2xl p-5 flex flex-col max-h-[88vh]">' +
-          '<div class="flex items-center justify-between border-b border-slate-100 pb-3"><h3 class="text-base font-bold">Giỏ hàng của bạn</h3>' +
-          '<button id="close-bag" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg">Đóng</button></div>' +
-          '<div class="flex-1 overflow-y-auto py-3 space-y-2.5">' +
-          (bag.length ? bag.map(function (i) {
-            return '<div class="flex items-center justify-between gap-2 text-sm border-b border-slate-100 pb-2"><span>' + i.qty + ' × ' + esc(i.name) + '</span><span class="tabular-nums font-bold">' + vnd(i.price * i.qty) + '</span></div>';
-          }).join('') : '<p class="text-sm text-slate-500 text-center py-8">Giỏ hàng đang trống.</p>') +
-          '</div>' +
-          '<div class="border-t border-slate-100 pt-4 space-y-3">' +
-          '<div class="flex justify-between font-bold text-base"><span>Tổng cộng</span><span class="tabular-nums text-[#0F766E]">' + vnd(total) + '</span></div>' +
-          '<button id="bag-pay" ' + (!bag.length ? 'disabled' : '') + ' class="w-full py-3.5 bg-[#0F766E] disabled:bg-slate-200 text-white text-sm font-bold rounded-xl">Thanh toán VietQR</button>' +
-          '</div></div></div>';
-        document.getElementById('close-bag').onclick = function () { root.innerHTML = ''; };
-        document.getElementById('bag-backdrop').onclick = function (e) { if (e.target.id === 'bag-backdrop') root.innerHTML = ''; };
-        document.getElementById('bag-pay').onclick = function () {
-          showQRModal('Thanh toán đơn hàng', total, 'MANG DI', 'Vui lòng quét mã VietQR để thanh toán.');
-        };
+        var savedPickup = 'Sau 30 phút';
+        try {
+          var prevInfo = JSON.parse(localStorage.getItem('hkdvn_cust_info') || '{}');
+          var defName = prevInfo.name || '';
+          var defPhone = prevInfo.phone || '';
+        } catch (e) { var defName = ''; var defPhone = ''; }
+
+        function renderBagBody() {
+          total = bag.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
+          root.innerHTML = '<div id="bag-backdrop" class="fixed inset-0 z-50 bg-slate-950/60 flex items-end sm:items-center justify-center">' +
+            '<div class="w-full max-w-md bg-white rounded-t-3xl sm:rounded-2xl p-5 flex flex-col max-h-[92vh]">' +
+            '<div class="flex items-center justify-between border-b border-slate-100 pb-3">' +
+            '<div><h3 class="text-base font-bold text-slate-900">Đơn đặt hàng nhận tại quán</h3>' +
+            '<p class="text-[11px] text-slate-500">Thanh toán trực tiếp tại cửa hàng khi đến lấy</p></div>' +
+            '<div class="flex items-center gap-2">' +
+            (bag.length ? '<button id="clear-bag" type="button" class="text-xs font-semibold text-red-700">Xóa hết</button>' : '') +
+            '<button id="close-bag" type="button" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg">Đóng</button>' +
+            '</div></div>' +
+            '<div class="flex-1 overflow-y-auto py-3 space-y-2.5">' +
+            (bag.length ? bag.map(function (i) {
+              return '<div class="flex items-center justify-between gap-2 text-sm border-b border-slate-100 pb-2.5">' +
+                '<div class="min-w-0 flex-1"><p class="font-semibold text-slate-900 truncate">' + esc(i.name) + '</p>' +
+                '<p class="text-xs text-slate-500 tabular-nums">' + vnd(i.price) + ' × ' + i.qty + ' = <strong class="text-slate-900">' + vnd(i.price * i.qty) + '</strong></p></div>' +
+                '<div class="flex items-center gap-1 shrink-0">' +
+                '<button type="button" data-bag-minus="' + esc(i.productId) + '" class="w-8 h-8 rounded-lg border border-slate-200 font-bold flex items-center justify-center">−</button>' +
+                '<span class="w-6 text-center text-xs font-bold tabular-nums">' + i.qty + '</span>' +
+                '<button type="button" data-bag-plus="' + esc(i.productId) + '" class="w-8 h-8 rounded-lg bg-[#0F766E] text-white font-bold flex items-center justify-center">+</button>' +
+                '<button type="button" data-bag-rm="' + esc(i.productId) + '" class="ml-1 px-2 h-8 rounded-lg border border-red-200 text-red-700 text-[11px] font-bold">Bỏ</button>' +
+                '</div></div>';
+            }).join('') : '<p class="text-sm text-slate-500 text-center py-8">Giỏ hàng đang trống. Chọn sản phẩm để đặt hàng.</p>') +
+            '</div>' +
+            '<form id="retail-order-form" class="border-t border-slate-100 pt-3.5 space-y-2.5">' +
+            '<div class="flex justify-between font-bold text-base"><span>Tạm tính (trả tại quán)</span><span class="tabular-nums text-[#0F766E]">' + vnd(total) + '</span></div>' +
+            (bag.length ? (
+              '<div class="grid grid-cols-2 gap-2">' +
+              '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Tên khách hàng *</label>' +
+              '<input id="cust-name" required value="' + esc(defName) + '" placeholder="Nguyễn Văn An" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl" /></div>' +
+              '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Số điện thoại *</label>' +
+              '<input id="cust-phone" required type="tel" inputmode="tel" value="' + esc(defPhone) + '" placeholder="0912345678" class="w-full px-3 py-2 text-xs font-mono border border-slate-200 rounded-xl" /></div>' +
+              '</div>' +
+              '<div><label class="block text-[11px] font-semibold text-slate-600 mb-1">Thời gian đến nhận hàng *</label>' +
+              '<div class="flex flex-wrap gap-1.5 mb-1.5">' +
+              ['Sau 15 phút', 'Sau 30 phút', 'Sau 1 giờ'].map(function (pr) {
+                return '<button type="button" data-pickup-preset="' + esc(pr) + '" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg border ' + (savedPickup === pr ? 'bg-[#0F766E] text-white border-[#0F766E]' : 'bg-slate-50 text-slate-700 border-slate-200') + '">' + esc(pr) + '</button>';
+              }).join('') +
+              '</div>' +
+              '<input id="cust-pickup" required value="' + esc(savedPickup) + '" placeholder="VD: 17:30 hôm nay hoặc Sau 30 phút" class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl" /></div>' +
+              '<input id="cust-note" type="text" placeholder="Ghi chú thêm cho cửa hàng (tùy chọn)..." class="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl" />'
+            ) : '') +
+            '<button id="bag-submit" type="submit" ' + (!bag.length ? 'disabled' : '') + ' class="w-full min-h-[46px] bg-[#0F766E] disabled:bg-slate-200 text-white text-sm font-bold rounded-xl">Xác nhận đặt hàng (Thanh toán tại quán)</button>' +
+            '</form></div></div>';
+
+          document.getElementById('close-bag').onclick = function () { root.innerHTML = ''; };
+          document.getElementById('bag-backdrop').onclick = function (e) { if (e.target.id === 'bag-backdrop') root.innerHTML = ''; };
+          var clrBtn = document.getElementById('clear-bag');
+          if (clrBtn) clrBtn.onclick = function () {
+            bag = [];
+            renderHeaderAndCats();
+            renderMenu();
+            renderDock();
+            renderBagBody();
+          };
+          root.querySelectorAll('[data-bag-plus]').forEach(function (b) {
+            b.onclick = function () {
+              var id = b.getAttribute('data-bag-plus');
+              var it = bag.find(function (x) { return x.productId === id; });
+              if (it) it.qty += 1;
+              renderHeaderAndCats(); renderMenu(); renderDock(); renderBagBody();
+            };
+          });
+          root.querySelectorAll('[data-bag-minus]').forEach(function (b) {
+            b.onclick = function () {
+              var id = b.getAttribute('data-bag-minus');
+              var idx = bag.findIndex(function (x) { return x.productId === id; });
+              if (idx >= 0) {
+                bag[idx].qty -= 1;
+                if (bag[idx].qty <= 0) bag.splice(idx, 1);
+              }
+              renderHeaderAndCats(); renderMenu(); renderDock(); renderBagBody();
+            };
+          });
+          root.querySelectorAll('[data-bag-rm]').forEach(function (b) {
+            b.onclick = function () {
+              var id = b.getAttribute('data-bag-rm');
+              bag = bag.filter(function (x) { return x.productId !== id; });
+              renderHeaderAndCats(); renderMenu(); renderDock(); renderBagBody();
+            };
+          });
+          root.querySelectorAll('[data-pickup-preset]').forEach(function (b) {
+            b.onclick = function () {
+              savedPickup = b.getAttribute('data-pickup-preset');
+              var inp = document.getElementById('cust-pickup');
+              if (inp) inp.value = savedPickup;
+              root.querySelectorAll('[data-pickup-preset]').forEach(function (other) {
+                var active = other.getAttribute('data-pickup-preset') === savedPickup;
+                other.className = 'px-2.5 py-1 text-[11px] font-semibold rounded-lg border ' + (active ? 'bg-[#0F766E] text-white border-[#0F766E]' : 'bg-slate-50 text-slate-700 border-slate-200');
+              });
+            };
+          });
+          var form = document.getElementById('retail-order-form');
+          if (form) form.onsubmit = async function (e) {
+            e.preventDefault();
+            if (!bag.length) return;
+            var cName = (document.getElementById('cust-name').value || '').trim();
+            var cPhone = (document.getElementById('cust-phone').value || '').trim();
+            var cPickup = (document.getElementById('cust-pickup').value || '').trim() || 'Sớm nhất';
+            var cNote = (document.getElementById('cust-note').value || '').trim();
+            if (!cName || !cPhone) return;
+            try { localStorage.setItem('hkdvn_cust_info', JSON.stringify({ name: cName, phone: cPhone })); } catch (err) {}
+
+            var btn = document.getElementById('bag-submit');
+            if (btn) { btn.disabled = true; btn.textContent = 'Đang gửi đơn đặt hàng...'; }
+
+            var orderId = 'DH-' + Date.now().toString().slice(-6);
+            var ok = await postGas('placeRetailOrder', {
+              orderKey: orderId,
+              orderId: orderId,
+              orderType: 'retail_pickup',
+              tableNumber: 0,
+              status: 'retail_pending',
+              customerName: cName,
+              customerPhone: cPhone,
+              pickupTime: cPickup,
+              note: cNote,
+              items: bag,
+              totalAmount: total
+            });
+            var orderedTotal = total;
+            bag = [];
+            renderHeaderAndCats();
+            renderMenu();
+            renderDock();
+            root.innerHTML = '<div id="ok-backdrop" class="fixed inset-0 z-50 bg-slate-950/60 flex items-end sm:items-center justify-center p-0 sm:p-4">' +
+              '<div class="w-full max-w-sm bg-white rounded-t-3xl sm:rounded-2xl p-6 space-y-4 text-center">' +
+              '<div class="w-12 h-12 mx-auto rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">' +
+              '<svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></div>' +
+              '<h3 class="text-lg font-bold text-slate-900">Đặt hàng thành công!</h3>' +
+              '<p class="text-xs text-slate-600 leading-relaxed">Mã đơn <strong class="font-mono">' + esc(orderId) + '</strong> · Tổng tạm tính <strong class="text-[#0F766E]">' + vnd(orderedTotal) + '</strong></p>' +
+              '<div class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-left space-y-1">' +
+              '<p><strong>Khách hàng:</strong> ' + esc(cName) + ' (' + esc(cPhone) + ')</p>' +
+              '<p><strong>Giờ đến nhận:</strong> ' + esc(cPickup) + '</p>' +
+              '<p class="text-[#0F766E] font-semibold pt-1">Thanh toán trực tiếp tại cửa hàng khi đến nhận.</p>' +
+              '</div>' +
+              '<button id="ok-close" type="button" class="w-full min-h-[44px] bg-[#0F766E] text-white text-sm font-bold rounded-xl">Tiếp tục xem sản phẩm</button>' +
+              '</div></div>';
+            document.getElementById('ok-close').onclick = function () { root.innerHTML = ''; };
+            document.getElementById('ok-backdrop').onclick = function (ev) { if (ev.target.id === 'ok-backdrop') root.innerHTML = ''; };
+            if (ok) showToast('Đã gửi đơn ' + orderId + ' tới cửa hàng!');
+          };
+        }
+        renderBagBody();
+      }
+
+      function openPendingOrderModal() {
+        var root = document.getElementById('modal-root');
+        function renderPendingBody() {
+          var pendingList = Object.keys(pendingCart).map(function (id) {
+            var p = products.find(function (x) { return x.id === id; });
+            return p ? Object.assign({}, p, { qty: pendingCart[id].qty, note: pendingCart[id].note || '' }) : null;
+          }).filter(Boolean);
+          var pCount = pendingList.reduce(function (s, i) { return s + i.qty; }, 0);
+          var pTotal = pendingList.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
+
+          root.innerHTML = '<div id="pend-backdrop" class="fixed inset-0 z-50 bg-slate-950/60 flex items-end sm:items-center justify-center">' +
+            '<div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-4 max-h-[88vh] flex flex-col">' +
+            '<div class="flex items-center justify-between border-b border-slate-100 pb-3">' +
+            '<div><h3 class="text-base font-bold text-slate-900">Món đang chọn · Bàn ' + tableNumber + '</h3>' +
+            '<p class="text-[11px] text-slate-500">Tăng giảm số lượng hoặc bỏ món trước khi gửi bếp</p></div>' +
+            '<div class="flex items-center gap-2">' +
+            (pCount > 0 ? '<button id="clear-pend" type="button" class="text-xs font-semibold text-red-700">Xóa hết</button>' : '') +
+            '<button id="close-pend" type="button" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg">Đóng</button>' +
+            '</div></div>' +
+            '<div class="flex-1 overflow-y-auto space-y-3">' +
+            (pendingList.length ? pendingList.map(function (i) {
+              return '<div class="border-b border-slate-100 pb-3 space-y-2">' +
+                '<div class="flex items-start justify-between gap-2 text-sm">' +
+                '<div class="min-w-0 flex-1"><p class="font-semibold text-slate-900">' + esc(i.name) + '</p>' +
+                '<p class="text-xs text-slate-500 tabular-nums">' + vnd(i.price) + ' / ' + esc(i.unit || 'Phần') + '</p></div>' +
+                '<span class="tabular-nums font-bold text-[#0F766E] shrink-0">' + vnd(i.price * i.qty) + '</span></div>' +
+                '<div class="flex items-center justify-between gap-2">' +
+                '<div class="flex items-center gap-1.5">' +
+                '<button type="button" data-p-minus="' + esc(i.id) + '" class="w-8 h-8 rounded-lg border border-slate-200 font-bold flex items-center justify-center">−</button>' +
+                '<span class="w-6 text-center text-xs font-bold tabular-nums">' + i.qty + '</span>' +
+                '<button type="button" data-p-plus="' + esc(i.id) + '" class="w-8 h-8 rounded-lg bg-[#0F766E] text-white font-bold flex items-center justify-center">+</button>' +
+                '</div>' +
+                '<button type="button" data-p-rm="' + esc(i.id) + '" class="px-2.5 h-8 rounded-lg border border-red-200 text-red-700 text-xs font-bold">Bỏ món</button>' +
+                '</div>' +
+                '<input type="text" data-p-note="' + esc(i.id) + '" value="' + esc(i.note) + '" placeholder="Ghi chú món (ít đá, không hành)..." class="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg" />' +
+                '</div>';
+            }).join('') : '<p class="text-sm text-slate-500 py-8 text-center">Chưa có món nào đang chọn.</p>') +
+            '</div>' +
+            '<div class="pt-3 border-t border-slate-100 space-y-3">' +
+            '<div class="flex justify-between items-center font-bold"><span>Tổng món đang chọn</span><span class="text-lg tabular-nums text-[#0F766E]">' + vnd(pTotal) + '</span></div>' +
+            '<button id="pend-submit" type="button" ' + (pCount === 0 ? 'disabled' : '') + ' class="w-full min-h-[46px] bg-[#0F766E] disabled:bg-slate-200 text-white text-sm font-bold rounded-xl">Gửi đơn gọi món (' + pCount + ' món)</button>' +
+            '</div></div></div>';
+
+          document.getElementById('close-pend').onclick = function () { root.innerHTML = ''; };
+          document.getElementById('pend-backdrop').onclick = function (e) { if (e.target.id === 'pend-backdrop') root.innerHTML = ''; };
+          var clrP = document.getElementById('clear-pend');
+          if (clrP) clrP.onclick = function () { pendingCart = {}; renderMenu(); renderDock(); renderPendingBody(); };
+          root.querySelectorAll('[data-p-plus]').forEach(function (b) {
+            b.onclick = function () {
+              var id = b.getAttribute('data-p-plus');
+              if (pendingCart[id]) pendingCart[id].qty += 1;
+              renderMenu(); renderDock(); renderPendingBody();
+            };
+          });
+          root.querySelectorAll('[data-p-minus]').forEach(function (b) {
+            b.onclick = function () {
+              var id = b.getAttribute('data-p-minus');
+              if (pendingCart[id]) {
+                pendingCart[id].qty -= 1;
+                if (pendingCart[id].qty <= 0) delete pendingCart[id];
+              }
+              renderMenu(); renderDock(); renderPendingBody();
+            };
+          });
+          root.querySelectorAll('[data-p-rm]').forEach(function (b) {
+            b.onclick = function () {
+              var id = b.getAttribute('data-p-rm');
+              delete pendingCart[id];
+              renderMenu(); renderDock(); renderPendingBody();
+            };
+          });
+          root.querySelectorAll('[data-p-note]').forEach(function (inp) {
+            inp.oninput = function () {
+              var id = inp.getAttribute('data-p-note');
+              if (pendingCart[id]) pendingCart[id].note = inp.value;
+              renderMenu();
+            };
+          });
+          var subBtn = document.getElementById('pend-submit');
+          if (subBtn) subBtn.onclick = function () {
+            var dockSubmit = document.getElementById('btn-submit-order');
+            root.innerHTML = '';
+            if (dockSubmit) dockSubmit.click();
+          };
+        }
+        renderPendingBody();
       }
 
       function renderHeaderAndCats() {
@@ -321,8 +545,8 @@
           var total = bag.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
           if (!count) { dock.innerHTML = ''; return; }
           dock.innerHTML = '<div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">' +
-            '<div><p class="text-xs text-slate-500">Đang chọn ' + count + ' sản phẩm</p><p class="text-base font-bold tabular-nums text-[#0F766E]">' + vnd(total) + '</p></div>' +
-            '<button id="dock-bag" class="px-5 py-3 min-h-[46px] bg-[#0F766E] text-white text-sm font-bold rounded-xl">Xem giỏ &amp; Thanh toán</button></div>';
+            '<div><p class="text-xs text-slate-500">Đang chọn ' + count + ' sản phẩm (trả tại quán)</p><p class="text-base font-bold tabular-nums text-[#0F766E]">' + vnd(total) + '</p></div>' +
+            '<button id="dock-bag" class="px-5 py-3 min-h-[46px] bg-[#0F766E] text-white text-sm font-bold rounded-xl">Xem giỏ &amp; Đặt hàng</button></div>';
           document.getElementById('dock-bag').onclick = openBagModal;
           return;
         }
@@ -338,14 +562,19 @@
 
         dock.innerHTML = '<div class="max-w-5xl mx-auto px-3.5 sm:px-5 py-3 space-y-2.5">' +
           '<div class="flex items-center justify-between gap-2 text-xs">' +
-          '<span class="font-semibold text-slate-800">' + (pCount > 0 ? 'Đang chọn: ' + pCount + ' món (' + vnd(pTotal) + ')' : 'Chạm + Chọn món từ thực đơn') + '</span>' +
-          '<button id="btn-view-sub" type="button" class="text-[#0F766E] font-semibold underline-offset-2 ' + (sCount > 0 ? 'underline' : 'opacity-60') + '">Đã gọi: ' + sCount + ' món · ' + vnd(sTotal) + '</button>' +
+          (pCount > 0
+            ? '<button id="btn-view-pending" type="button" class="font-bold text-[#0F766E] underline underline-offset-2 text-left">Đang chọn: ' + pCount + ' món (' + vnd(pTotal) + ') · Sửa ›</button>'
+            : '<span class="font-semibold text-slate-700">Chạm + Chọn món từ thực đơn</span>') +
+          '<button id="btn-view-sub" type="button" class="text-slate-700 font-semibold underline-offset-2 ' + (sCount > 0 ? 'underline text-[#0F766E]' : 'opacity-60') + '">Đã gọi: ' + sCount + ' món · ' + vnd(sTotal) + '</button>' +
           '</div>' +
           '<div class="grid grid-cols-2 gap-2.5">' +
           '<button id="btn-submit-order" type="button" ' + (pCount === 0 ? 'disabled' : '') + ' class="min-h-[46px] px-3 bg-[#0F766E] hover:bg-[#0D655E] disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-bold rounded-xl transition-colors">' +
           (pCount > 0 ? 'Gọi món (' + pCount + ')' : 'Gọi món') + '</button>' +
           '<button id="btn-support-pay" type="button" class="min-h-[46px] px-3 bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold rounded-xl transition-colors">Thanh toán / Hỗ trợ</button>' +
           '</div></div>';
+
+        var pendViewBtn = document.getElementById('btn-view-pending');
+        if (pendViewBtn) pendViewBtn.onclick = openPendingOrderModal;
 
         var subViewBtn = document.getElementById('btn-view-sub');
         if (subViewBtn) subViewBtn.onclick = openSubmittedModal;
@@ -527,6 +756,7 @@
                   '<button data-minus="' + esc(p.id) + '" class="w-8 h-8 rounded-lg border border-slate-200 text-slate-700 font-bold flex items-center justify-center">−</button>' +
                   '<span class="w-5 text-center text-xs font-bold tabular-nums">' + cur.qty + '</span>' +
                   '<button data-plus="' + esc(p.id) + '" class="w-8 h-8 rounded-lg bg-[#0F766E] text-white font-bold flex items-center justify-center">+</button>' +
+                  '<button data-remove="' + esc(p.id) + '" class="ml-0.5 px-1.5 h-8 rounded-lg border border-red-200 text-red-700 text-[11px] font-bold">Bỏ</button>' +
                   '</div>'
               ) +
               '</div>' +
@@ -580,6 +810,20 @@
               if (!cur) return;
               cur.qty -= 1;
               if (cur.qty <= 0) delete pendingCart[id];
+            }
+            renderMenu();
+            renderDock();
+          };
+        });
+
+        app.querySelectorAll('[data-remove]').forEach(function (btn) {
+          btn.onclick = function () {
+            var id = btn.getAttribute('data-remove');
+            if (config.model === 'retail') {
+              bag = bag.filter(function (x) { return x.productId !== id; });
+              renderHeaderAndCats();
+            } else {
+              delete pendingCart[id];
             }
             renderMenu();
             renderDock();
