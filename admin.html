@@ -75,7 +75,7 @@
       function sha256Hex(asciiInput){var utf8=unescape(encodeURIComponent(asciiInput)),rr=function(v,a){return(v>>>a)|(v<<(32-a))},mp=Math.pow,mw=mp(2,32),res='',w=[],bl=utf8.length*8,h=[],k=[],pc=0,ic={};for(var c=2;pc<64;c++){if(!ic[c]){for(var i=0;i<313;i+=c)ic[i]=1;h[pc]=(mp(c,.5)*mw)|0;k[pc++]=(mp(c,1/3)*mw)|0;}}var p=utf8+'\x80';while((p.length%64)-56)p+='\x00';for(var i=0;i<p.length;i++)w[i>>2]|=p.charCodeAt(i)<<((3-i)%4)*8;w[w.length]=(bl/mw)|0;w[w.length]=bl;for(var j=0;j<w.length;){var W=w.slice(j,j+=16),oh=h.slice(0);for(var i=0;i<64;i++){var w15=W[i-15],w2=W[i-2],a=h[0],e=h[4],t1=h[7]+(rr(e,6)^rr(e,11)^rr(e,25))+((e&h[5])^(~e&h[6]))+k[i]+(W[i]=i<16?W[i]:(W[i-16]+(rr(w15,7)^rr(w15,18)^(w15>>>3))+W[i-7]+(rr(w2,17)^rr(w2,19)^(w2>>>10)))|0),t2=(rr(a,2)^rr(a,13)^rr(a,22))+((a&h[1])^(a&h[2])^(h[1]&h[2]));h.unshift((t1+t2)|0);h[4]=(h[4]+t1)|0;h.pop();}for(var i=0;i<8;i++)h[i]=(h[i]+oh[i])|0;}for(var i=0;i<8;i++)for(var j=3;j+1;j--){var b=(h[i]>>(j*8))&255;res+=(b<16?'0':'')+b.toString(16);}return res;}
       var FIREBASE_CFG = {"projectId":"gen-lang-client-0544945813","appId":"1:203283320629:web:b2533ccf4764231ade467c","apiKey":"AIzaSyB_7Gya-I3gONh1XPhVXmI5Gqw1Ezd-dV0","authDomain":"gen-lang-client-0544945813.firebaseapp.com","storageBucket":"gen-lang-client-0544945813.firebasestorage.app","messagingSenderId":"203283320629","measurementId":"","oAuthClientId":"203283320629-fioca2vsnfjqa7aecuhhd6d691buum8l.apps.googleusercontent.com","recaptchaSiteKey":""};
       var BANKS = [{"bin":"970436","shortName":"Vietcombank","fullName":"Ngân hàng TMCP Ngoại thương Việt Nam"},{"bin":"970407","shortName":"Techcombank","fullName":"Ngân hàng TMCP Kỹ thương Việt Nam"},{"bin":"970422","shortName":"MBBank","fullName":"Ngân hàng TMCP Quân đội"},{"bin":"970418","shortName":"BIDV","fullName":"Ngân hàng TMCP Đầu tư và Phát triển VN"},{"bin":"970415","shortName":"VietinBank","fullName":"Ngân hàng TMCP Công thương Việt Nam"},{"bin":"970416","shortName":"ACB","fullName":"Ngân hàng TMCP Á Châu"},{"bin":"970432","shortName":"VPBank","fullName":"Ngân hàng TMCP Việt Nam Thịnh Vượng"},{"bin":"970423","shortName":"TPBank","fullName":"Ngân hàng TMCP Tiên Phong"},{"bin":"970403","shortName":"Sacombank","fullName":"Ngân hàng TMCP Sài Gòn Thương Tín"},{"bin":"970405","shortName":"Agribank","fullName":"Ngân hàng Nông nghiệp & PTNT VN"}];
-      var GAS_CODE_TEMPLATE = "// HKDVN BYOB Backend - Tự động triển khai cho Google Sheets ID: __HKDVN_SHEET_ID__\nconst SHEET_ID = '__HKDVN_SHEET_ID__';\nconst CACHE_KEY = 'hkdvn_live_orders_v1_' + SHEET_ID;\n\nfunction safeParseItems(raw) {\n  try {\n    const parsed = JSON.parse(raw || '[]');\n    return Array.isArray(parsed) ? parsed : [];\n  } catch (err) {\n    return [];\n  }\n}\n\nfunction buildOrdersFromSheet(sheet) {\n  const rows = sheet ? sheet.getDataRange().getValues() : [];\n  const orders = [];\n  let latestUpdate = '';\n  for (let i = 1; i < rows.length; i++) {\n    const r = rows[i];\n    if (!r[0]) continue;\n    const updatedAt = String(r[4] || '');\n    if (updatedAt > latestUpdate) latestUpdate = updatedAt;\n    orders.push({\n      tableNumber: Number(r[0]),\n      status: String(r[1] || 'occupied'),\n      totalAmount: Number(r[2] || 0),\n      lastOrderId: String(r[3] || ''),\n      updatedAt: updatedAt,\n      items: safeParseItems(r[5])\n    });\n  }\n  return { updatedAt: latestUpdate, orders: orders };\n}\n\nfunction syncLiveCache(ss) {\n  const sheet = ss.getSheetByName('DonHienTai');\n  const payload = buildOrdersFromSheet(sheet);\n  try {\n    const json = JSON.stringify(payload);\n    if (json.length < 95000) {\n      CacheService.getScriptCache().put(CACHE_KEY, json, 21600);\n    }\n  } catch (err) {}\n  return payload;\n}\n\nfunction doGet(e) {\n  const since = (e && e.parameter && e.parameter.since) || '';\n  const cb = (e && e.parameter && e.parameter.callback) || '';\n  const cache = CacheService.getScriptCache();\n  let payload = null;\n  try {\n    const cached = cache.get(CACHE_KEY);\n    if (cached) payload = JSON.parse(cached);\n  } catch (err) {\n    payload = null;\n  }\n\n  if (!payload) {\n    const ss = SpreadsheetApp.openById(SHEET_ID);\n    payload = syncLiveCache(ss);\n  }\n\n  if (since && payload.updatedAt && since === payload.updatedAt) {\n    return jsonOut({ unchanged: true, updatedAt: payload.updatedAt }, cb);\n  }\n  if (since && !payload.updatedAt && since === '__EMPTY__') {\n    return jsonOut({ unchanged: true, updatedAt: '' }, cb);\n  }\n  return jsonOut({ unchanged: false, updatedAt: payload.updatedAt || '', orders: payload.orders || [] }, cb);\n}\n\nfunction doPost(e) {\n  const lock = LockService.getScriptLock();\n  lock.waitLock(5000);\n  try {\n    const ss = SpreadsheetApp.openById(SHEET_ID);\n    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');\n    const now = new Date().toISOString();\n\n    if (\n      body.action === 'placeOrder' ||\n      body.action === 'requestPayment' ||\n      body.action === 'callSupport' ||\n      body.action === 'ackSupport'\n    ) {\n      const sheet = ss.getSheetByName('DonHienTai');\n      const rows = sheet.getDataRange().getValues();\n      let rowIndex = -1;\n      let existingRow = null;\n      for (let i = 1; i < rows.length; i++) {\n        if (Number(rows[i][0]) === Number(body.tableNumber)) {\n          rowIndex = i + 1;\n          existingRow = rows[i];\n          break;\n        }\n      }\n\n      let nextItems = body.items;\n      let nextTotal = body.totalAmount;\n      if (existingRow && (body.action === 'callSupport' || body.action === 'ackSupport')) {\n        if (!Array.isArray(nextItems) || nextItems.length === 0) {\n          nextItems = safeParseItems(existingRow[5]);\n          nextTotal = Number(existingRow[2] || 0);\n        }\n      }\n\n      if (body.action === 'ackSupport' && (!nextItems || nextItems.length === 0)) {\n        if (rowIndex > 0) sheet.deleteRow(rowIndex);\n        syncLiveCache(ss);\n        return jsonOut({ ok: true, updatedAt: now });\n      }\n\n      const nextStatus =\n        body.action === 'ackSupport'\n          ? 'occupied'\n          : body.status ||\n            (body.action === 'requestPayment'\n              ? 'payment_requested'\n              : body.action === 'callSupport'\n                ? 'support_requested'\n                : 'occupied');\n\n      const rowData = [\n        body.tableNumber,\n        nextStatus,\n        nextTotal || 0,\n        body.lastOrderId || (existingRow ? existingRow[3] : ''),\n        now,\n        JSON.stringify(nextItems || [])\n      ];\n      if (rowIndex > 0) {\n        sheet.getRange(rowIndex, 1, 1, 6).setValues([rowData]);\n      } else {\n        sheet.appendRow(rowData);\n      }\n      syncLiveCache(ss);\n      return jsonOut({ ok: true, updatedAt: now });\n    }\n\n    if (body.action === 'recordInvoice') {\n      const revSheet = ss.getSheetByName('DoanhThu');\n      const detailSheet = ss.getSheetByName('ChiTietDonHang');\n      const inv = body.invoice;\n      revSheet.appendRow([\n        inv.id, inv.createdAt, inv.model, inv.customerOrTable,\n        inv.totalAmount, inv.totalCost, inv.profit, inv.paymentMethod,\n        JSON.stringify(inv.items || [])\n      ]);\n      (inv.items || []).forEach(function(item) {\n        detailSheet.appendRow([inv.id, inv.createdAt, item.sku, item.name, item.qty, item.price, item.note || '']);\n      });\n      if (body.clearTableNumber) {\n        const liveSheet = ss.getSheetByName('DonHienTai');\n        const rows = liveSheet.getDataRange().getValues();\n        for (let i = rows.length - 1; i >= 1; i--) {\n          if (Number(rows[i][0]) === Number(body.clearTableNumber)) {\n            liveSheet.deleteRow(i + 1);\n          }\n        }\n        syncLiveCache(ss);\n      }\n      return jsonOut({ ok: true });\n    }\n\n    return jsonOut({ ok: false, error: 'Unknown action' });\n  } finally {\n    lock.releaseLock();\n  }\n}\n\nfunction jsonOut(obj, callbackName) {\n  const text = JSON.stringify(obj);\n  if (callbackName && /^[a-zA-Z0-9_$.]+$/.test(callbackName)) {\n    return ContentService\n      .createTextOutput(callbackName + '(' + text + ');')\n      .setMimeType(ContentService.MimeType.JAVASCRIPT);\n  }\n  return ContentService\n    .createTextOutput(text)\n    .setMimeType(ContentService.MimeType.JSON);\n}\n";
+      var GAS_CODE_TEMPLATE = "// HKDVN BYOB Backend - Tự động triển khai cho Google Sheets ID: __HKDVN_SHEET_ID__\nconst SHEET_ID = '__HKDVN_SHEET_ID__';\nconst CACHE_KEY = 'hkdvn_live_orders_v1_' + SHEET_ID;\n\nfunction safeParseItems(raw) {\n  try {\n    const parsed = JSON.parse(raw || '[]');\n    return Array.isArray(parsed) ? parsed : [];\n  } catch (err) {\n    return [];\n  }\n}\n\nfunction parseRawPayload(raw) {\n  try {\n    return JSON.parse(raw || '[]');\n  } catch (err) {\n    return [];\n  }\n}\n\nfunction buildOrdersFromSheet(sheet) {\n  const rows = sheet ? sheet.getDataRange().getValues() : [];\n  const orders = [];\n  let latestUpdate = '';\n  for (let i = 1; i < rows.length; i++) {\n    const r = rows[i];\n    if (!r[0]) continue;\n    const updatedAt = String(r[4] || '');\n    if (updatedAt > latestUpdate) latestUpdate = updatedAt;\n    const parsed = parseRawPayload(r[5]);\n    const isRetail = String(r[1]) === 'retail_pending' || (parsed && !Array.isArray(parsed) && parsed._retailOrder);\n    if (isRetail) {\n      orders.push({\n        orderKey: String(r[0]),\n        orderType: 'retail_pickup',\n        tableNumber: 0,\n        status: String(r[1] || 'retail_pending'),\n        totalAmount: Number(r[2] || 0),\n        lastOrderId: String(r[3] || r[0]),\n        updatedAt: updatedAt,\n        customerName: (parsed && parsed.customerName) || '',\n        customerPhone: (parsed && parsed.customerPhone) || '',\n        pickupTime: (parsed && parsed.pickupTime) || '',\n        note: (parsed && parsed.note) || '',\n        items: (parsed && Array.isArray(parsed.items)) ? parsed.items : []\n      });\n    } else {\n      orders.push({\n        orderKey: String(r[0]),\n        orderType: 'fnb_table',\n        tableNumber: Number(r[0]),\n        status: String(r[1] || 'occupied'),\n        totalAmount: Number(r[2] || 0),\n        lastOrderId: String(r[3] || ''),\n        updatedAt: updatedAt,\n        items: Array.isArray(parsed) ? parsed : []\n      });\n    }\n  }\n  return { updatedAt: latestUpdate, orders: orders };\n}\n\nfunction syncLiveCache(ss) {\n  const sheet = ss.getSheetByName('DonHienTai');\n  const payload = buildOrdersFromSheet(sheet);\n  try {\n    const json = JSON.stringify(payload);\n    if (json.length < 95000) {\n      CacheService.getScriptCache().put(CACHE_KEY, json, 21600);\n    }\n  } catch (err) {}\n  return payload;\n}\n\nfunction doGet(e) {\n  const since = (e && e.parameter && e.parameter.since) || '';\n  const cb = (e && e.parameter && e.parameter.callback) || '';\n  const cache = CacheService.getScriptCache();\n  let payload = null;\n  try {\n    const cached = cache.get(CACHE_KEY);\n    if (cached) payload = JSON.parse(cached);\n  } catch (err) {\n    payload = null;\n  }\n\n  if (!payload) {\n    const ss = SpreadsheetApp.openById(SHEET_ID);\n    payload = syncLiveCache(ss);\n  }\n\n  if (since && payload.updatedAt && since === payload.updatedAt) {\n    return jsonOut({ unchanged: true, updatedAt: payload.updatedAt }, cb);\n  }\n  if (since && !payload.updatedAt && since === '__EMPTY__') {\n    return jsonOut({ unchanged: true, updatedAt: '' }, cb);\n  }\n  return jsonOut({ unchanged: false, updatedAt: payload.updatedAt || '', orders: payload.orders || [] }, cb);\n}\n\nfunction doPost(e) {\n  const lock = LockService.getScriptLock();\n  lock.waitLock(5000);\n  try {\n    const ss = SpreadsheetApp.openById(SHEET_ID);\n    const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');\n    const now = new Date().toISOString();\n\n    if (\n      body.action === 'placeOrder' ||\n      body.action === 'requestPayment' ||\n      body.action === 'callSupport' ||\n      body.action === 'ackSupport'\n    ) {\n      const sheet = ss.getSheetByName('DonHienTai');\n      const rows = sheet.getDataRange().getValues();\n      let rowIndex = -1;\n      let existingRow = null;\n      for (let i = 1; i < rows.length; i++) {\n        if (Number(rows[i][0]) === Number(body.tableNumber)) {\n          rowIndex = i + 1;\n          existingRow = rows[i];\n          break;\n        }\n      }\n\n      let nextItems = body.items;\n      let nextTotal = body.totalAmount;\n      if (existingRow && (body.action === 'callSupport' || body.action === 'ackSupport')) {\n        if (!Array.isArray(nextItems) || nextItems.length === 0) {\n          nextItems = safeParseItems(existingRow[5]);\n          nextTotal = Number(existingRow[2] || 0);\n        }\n      }\n\n      if (body.action === 'ackSupport' && (!nextItems || nextItems.length === 0)) {\n        if (rowIndex > 0) sheet.deleteRow(rowIndex);\n        syncLiveCache(ss);\n        return jsonOut({ ok: true, updatedAt: now });\n      }\n\n      const nextStatus =\n        body.action === 'ackSupport'\n          ? 'occupied'\n          : body.status ||\n            (body.action === 'requestPayment'\n              ? 'payment_requested'\n              : body.action === 'callSupport'\n                ? 'support_requested'\n                : 'occupied');\n\n      const rowData = [\n        body.tableNumber,\n        nextStatus,\n        nextTotal || 0,\n        body.lastOrderId || (existingRow ? existingRow[3] : ''),\n        now,\n        JSON.stringify(nextItems || [])\n      ];\n      if (rowIndex > 0) {\n        sheet.getRange(rowIndex, 1, 1, 6).setValues([rowData]);\n      } else {\n        sheet.appendRow(rowData);\n      }\n      syncLiveCache(ss);\n      return jsonOut({ ok: true, updatedAt: now });\n    }\n\n    if (body.action === 'placeRetailOrder') {\n      const sheet = ss.getSheetByName('DonHienTai');\n      const orderId = String(body.orderId || ('DH-' + Date.now().toString().slice(-6)));\n      const payloadJson = JSON.stringify({\n        _retailOrder: true,\n        orderId: orderId,\n        customerName: String(body.customerName || ''),\n        customerPhone: String(body.customerPhone || ''),\n        pickupTime: String(body.pickupTime || ''),\n        note: String(body.note || ''),\n        items: Array.isArray(body.items) ? body.items : []\n      });\n      sheet.appendRow([\n        orderId,\n        'retail_pending',\n        Number(body.totalAmount || 0),\n        orderId,\n        now,\n        payloadJson\n      ]);\n      syncLiveCache(ss);\n      return jsonOut({ ok: true, orderId: orderId, updatedAt: now });\n    }\n\n    if (body.action === 'transferTable') {\n      const fromTbl = Number(body.fromTable);\n      const toTbl = Number(body.toTable);\n      if (!fromTbl || !toTbl || fromTbl === toTbl) {\n        return jsonOut({ ok: false, error: 'Số bàn chuyển không hợp lệ' });\n      }\n      const sheet = ss.getSheetByName('DonHienTai');\n      const rows = sheet.getDataRange().getValues();\n      let fromRowIndex = -1;\n      let toRowIndex = -1;\n      let fromRow = null;\n      let toRow = null;\n      for (let i = 1; i < rows.length; i++) {\n        const keyNum = Number(rows[i][0]);\n        if (keyNum === fromTbl) {\n          fromRowIndex = i + 1;\n          fromRow = rows[i];\n        } else if (keyNum === toTbl) {\n          toRowIndex = i + 1;\n          toRow = rows[i];\n        }\n      }\n      if (!fromRow) {\n        return jsonOut({ ok: false, error: 'Bàn nguồn đang trống' });\n      }\n      if (toRow) {\n        const fromItems = safeParseItems(fromRow[5]);\n        const merged = safeParseItems(toRow[5]).slice();\n        fromItems.forEach(function (incoming) {\n          const matchIdx = merged.findIndex(function (x) {\n            return x.productId === incoming.productId && (x.note || '') === (incoming.note || '');\n          });\n          if (matchIdx >= 0) {\n            merged[matchIdx].qty = (Number(merged[matchIdx].qty) || 0) + (Number(incoming.qty) || 0);\n          } else {\n            merged.push(incoming);\n          }\n        });\n        const mergedTotal = merged.reduce(function (s, it) {\n          return s + (Number(it.price) || 0) * (Number(it.qty) || 1);\n        }, 0);\n        const mergedStatus =\n          String(toRow[1]) === 'payment_requested' || String(fromRow[1]) === 'payment_requested'\n            ? 'payment_requested'\n            : String(toRow[1]) === 'support_requested' || String(fromRow[1]) === 'support_requested'\n              ? 'support_requested'\n              : 'occupied';\n        sheet.getRange(toRowIndex, 1, 1, 6).setValues([[\n          toTbl,\n          mergedStatus,\n          mergedTotal,\n          toRow[3] || fromRow[3] || '',\n          now,\n          JSON.stringify(merged)\n        ]]);\n        sheet.deleteRow(fromRowIndex);\n      } else {\n        sheet.getRange(fromRowIndex, 1).setValue(toTbl);\n        sheet.getRange(fromRowIndex, 5).setValue(now);\n      }\n      syncLiveCache(ss);\n      return jsonOut({ ok: true, updatedAt: now });\n    }\n\n    if (body.action === 'dismissRetailOrder' && body.clearOrderKey) {\n      const liveSheet = ss.getSheetByName('DonHienTai');\n      const rows = liveSheet.getDataRange().getValues();\n      for (let i = rows.length - 1; i >= 1; i--) {\n        if (String(rows[i][0]) === String(body.clearOrderKey)) {\n          liveSheet.deleteRow(i + 1);\n        }\n      }\n      syncLiveCache(ss);\n      return jsonOut({ ok: true, updatedAt: now });\n    }\n\n    if (body.action === 'recordInvoice') {\n      const revSheet = ss.getSheetByName('DoanhThu');\n      const detailSheet = ss.getSheetByName('ChiTietDonHang');\n      const inv = body.invoice;\n      revSheet.appendRow([\n        inv.id, inv.createdAt, inv.model, inv.customerOrTable,\n        inv.totalAmount, inv.totalCost, inv.profit, inv.paymentMethod,\n        JSON.stringify(inv.items || [])\n      ]);\n      (inv.items || []).forEach(function(item) {\n        detailSheet.appendRow([inv.id, inv.createdAt, item.sku, item.name, item.qty, item.price, item.note || '']);\n      });\n      if (body.clearTableNumber || body.clearOrderKey) {\n        const liveSheet = ss.getSheetByName('DonHienTai');\n        const rows = liveSheet.getDataRange().getValues();\n        for (let i = rows.length - 1; i >= 1; i--) {\n          if (\n            (body.clearTableNumber && Number(rows[i][0]) === Number(body.clearTableNumber)) ||\n            (body.clearOrderKey && String(rows[i][0]) === String(body.clearOrderKey))\n          ) {\n            liveSheet.deleteRow(i + 1);\n          }\n        }\n        syncLiveCache(ss);\n      }\n      return jsonOut({ ok: true });\n    }\n\n    return jsonOut({ ok: false, error: 'Unknown action' });\n  } finally {\n    lock.releaseLock();\n  }\n}\n\nfunction jsonOut(obj, callbackName) {\n  const text = JSON.stringify(obj);\n  if (callbackName && /^[a-zA-Z0-9_$.]+$/.test(callbackName)) {\n    return ContentService\n      .createTextOutput(callbackName + '(' + text + ');')\n      .setMimeType(ContentService.MimeType.JAVASCRIPT);\n  }\n  return ContentService\n    .createTextOutput(text)\n    .setMimeType(ContentService.MimeType.JSON);\n}\n";
       var WORKSPACE_SCOPES = [
         'https://www.googleapis.com/auth/drive.file',
         'https://www.googleapis.com/auth/spreadsheets',
@@ -87,7 +87,12 @@
       var products = [];
       var activeTab = 'ops';
       var posCart = [];
+      var posSearch = '';
+      var posCat = 'Tất cả';
+      var posCustomerLabel = 'Khách tại quầy';
+      var activeRetailOrderId = null;
       var tableOrders = [];
+      var retailOrders = [];
       var invoices = JSON.parse(localStorage.getItem('hkdvn_tenant_invoices') || '[]');
       var ghStorageKey = 'hkdvn_tenant_gh_token_' + location.pathname;
       var infraStorageKey = 'hkdvn_tenant_infra_' + location.pathname;
@@ -155,6 +160,9 @@
 
       function vnd(n) { return new Intl.NumberFormat('vi-VN').format(Math.round(Number(n) || 0)) + 'đ'; }
       function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+      function noAccent(str) {
+        return String(str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase().trim();
+      }
       function fmtTime(iso) {
         try { return new Date(iso).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }); }
         catch (e) { return ''; }
@@ -256,7 +264,11 @@
               '<p class="text-[11px] text-amber-800 truncate">' + esc(latestUnread.detail) + '</p></div>' +
               '<button id="banner-open-notif" class="px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-xl shrink-0">Xem</button></div>';
             document.getElementById('banner-open-notif').onclick = function () {
-              openTableDetailSheet(latestUnread.tableNumber);
+              if (latestUnread.orderKey) {
+                openRetailOrderModal(latestUnread.orderKey);
+              } else {
+                openTableDetailSheet(latestUnread.tableNumber);
+              }
               latestUnread.read = true;
               unreadCount = notifications.filter(function (n) { return !n.read; }).length;
               updateBellUI();
@@ -274,7 +286,33 @@
         el.className = 'text-[11px] truncate ' + (syncHasError ? 'text-amber-700 font-medium' : 'text-slate-500');
       }
 
+      function isRetailOrderObj(o) {
+        return Boolean(o && (o.orderType === 'retail_pickup' || o.status === 'retail_pending' || String(o.orderKey || o.orderId || '').indexOf('DH-') === 0));
+      }
+
       function pushNotification(order) {
+        var isRet = isRetailOrderObj(order);
+        var itemCount = Array.isArray(order.items) ? order.items.reduce(function (s, i) { return s + (i.qty || 1); }, 0) : 0;
+        if (isRet) {
+          var oKey = String(order.orderKey || order.orderId || order.lastOrderId || '');
+          var rTitle = 'Đơn đặt mới: ' + (order.customerName || 'Khách hàng') + (order.customerPhone ? ' (' + order.customerPhone + ')' : '');
+          var rDetail = 'Nhận lúc: ' + (order.pickupTime || 'Sớm nhất') + ' · ' + itemCount + ' món · ' + vnd(order.totalAmount);
+          notifications.unshift({
+            id: oKey + '-' + Date.now(),
+            orderKey: oKey,
+            tableNumber: 0,
+            title: rTitle,
+            detail: rDetail,
+            time: fmtTime(order.updatedAt || new Date().toISOString()),
+            read: false
+          });
+          if (notifications.length > 30) notifications.length = 30;
+          unreadCount = notifications.filter(function (n) { return !n.read; }).length;
+          updateBellUI();
+          speakVN('Có đơn đặt hàng mới từ ' + (order.customerName || 'khách hàng') + ', hẹn lấy ' + (order.pickupTime || ''));
+          return;
+        }
+
         var isPay = order.status === 'payment_requested';
         var isHelp = order.status === 'support_requested';
         var title = isPay
@@ -284,7 +322,7 @@
             : 'Bàn ' + order.tableNumber + ' vừa gọi món mới';
         var detail = isHelp
           ? String(order.lastOrderId || '').replace(/^HOTRO:\s*/, '') || 'Cần nhân viên hỗ trợ'
-          : (Array.isArray(order.items) ? order.items.reduce(function (s, i) { return s + (i.qty || 1); }, 0) : 0) + ' món · ' + vnd(order.totalAmount);
+          : itemCount + ' món · ' + vnd(order.totalAmount);
 
         notifications.unshift({
           id: order.tableNumber + '-' + Date.now(),
@@ -302,28 +340,38 @@
 
       function applyIncomingOrders(incomingOrders) {
         var hasChange = false;
+        var nextTables = [];
+        var nextRetails = [];
         incomingOrders.forEach(function (o) {
-          var sig = o.status + '|' + o.lastOrderId + '|' + o.updatedAt + '|' + (o.items ? o.items.length : 0);
-          var prev = lastSnapshot[o.tableNumber];
+          var isRet = isRetailOrderObj(o);
+          var key = isRet ? String(o.orderKey || o.orderId || o.lastOrderId) : String(o.tableNumber);
+          var sig = o.status + '|' + (o.lastOrderId || o.orderId || '') + '|' + o.updatedAt + '|' + (o.items ? o.items.length : 0);
+          var prev = lastSnapshot[key];
           if (!firstPollDone) {
-            if (o.status === 'payment_requested' || o.status === 'support_requested' || (o.items && o.items.length > 0)) {
+            if (isRet || o.status === 'payment_requested' || o.status === 'support_requested' || (o.items && o.items.length > 0)) {
               pushNotification(o);
             }
           } else if (prev !== sig) {
             pushNotification(o);
           }
           if (prev !== sig) hasChange = true;
-          lastSnapshot[o.tableNumber] = sig;
+          lastSnapshot[key] = sig;
+          if (isRet) nextRetails.push(o);
+          else if (Number(o.tableNumber) > 0) nextTables.push(o);
         });
+        if (nextTables.length !== tableOrders.length || nextRetails.length !== retailOrders.length) {
+          hasChange = true;
+        }
         firstPollDone = true;
-        tableOrders = incomingOrders;
+        tableOrders = nextTables;
+        retailOrders = nextRetails;
         if (hasChange && activeTab === 'ops') render();
       }
 
       function readLiveBridgeOrders() {
         try {
           var raw = JSON.parse(localStorage.getItem(storageBridgeKey) || '{}');
-          return Object.keys(raw).map(function (k) { return raw[k]; }).filter(function (o) { return o && o.tableNumber; });
+          return Object.keys(raw).map(function (k) { return raw[k]; }).filter(function (o) { return o && (o.tableNumber || o.orderKey || o.orderId); });
         } catch (e) { return []; }
       }
 
@@ -762,7 +810,7 @@
           '<button id="close-notif" class="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 rounded-lg">Đóng</button></div></div>' +
           '<div class="flex-1 overflow-y-auto space-y-2.5">' +
           (notifications.length ? notifications.map(function (n) {
-            return '<button data-notif-table="' + n.tableNumber + '" data-notif-id="' + esc(n.id) + '" class="w-full text-left p-3.5 rounded-xl border ' + (n.read ? 'bg-white border-slate-200' : 'bg-amber-50 border-amber-300') + '">' +
+            return '<button data-notif-key="' + esc(n.orderKey || '') + '" data-notif-table="' + n.tableNumber + '" data-notif-id="' + esc(n.id) + '" class="w-full text-left p-3.5 rounded-xl border ' + (n.read ? 'bg-white border-slate-200' : 'bg-amber-50 border-amber-300') + '">' +
               '<div class="flex items-center justify-between gap-2"><span class="text-xs font-bold text-slate-900">' + esc(n.title) + '</span>' +
               '<span class="text-[11px] text-slate-500 tabular-nums">' + esc(n.time) + '</span></div>' +
               '<p class="text-xs text-slate-600 mt-1">' + esc(n.detail) + '</p></button>';
@@ -778,14 +826,19 @@
           updateBellUI();
           openNotificationsModal();
         };
-        modal.querySelectorAll('[data-notif-table]').forEach(function (btn) {
+        modal.querySelectorAll('[data-notif-id]').forEach(function (btn) {
           btn.onclick = function () {
             var id = btn.getAttribute('data-notif-id');
             var found = notifications.find(function (n) { return n.id === id; });
             if (found) found.read = true;
             unreadCount = notifications.filter(function (n) { return !n.read; }).length;
             updateBellUI();
-            openTableDetailSheet(Number(btn.getAttribute('data-notif-table')));
+            var oKey = btn.getAttribute('data-notif-key');
+            if (oKey) {
+              openRetailOrderModal(oKey);
+            } else {
+              openTableDetailSheet(Number(btn.getAttribute('data-notif-table')));
+            }
           };
         });
       }
@@ -808,8 +861,15 @@
         var isPay = ord.status === 'payment_requested';
         var helpNote = String(ord.lastOrderId || '').indexOf('HOTRO:') === 0 ? String(ord.lastOrderId).replace(/^HOTRO:\s*/, '') : '';
 
+        var transferOptions = Array.from({ length: config.tableCount || 12 }, function (_, i) { return i + 1; })
+          .filter(function (n) { return n !== Number(tableNum); })
+          .map(function (n) {
+            var target = tableOrders.find(function (o) { return Number(o.tableNumber) === n; });
+            return '<option value="' + n + '">Bàn ' + n + (target ? ' (Đang có khách · Gộp bàn)' : ' (Trống)') + '</option>';
+          }).join('');
+
         modal.innerHTML = '<div id="td-bg" class="fixed inset-0 z-50 bg-slate-950/60 flex items-end sm:items-center justify-center">' +
-          '<div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] flex flex-col">' +
+          '<div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-4 max-h-[92vh] flex flex-col">' +
           '<div class="flex items-center justify-between border-b border-slate-100 pb-3">' +
           '<div><h3 class="text-base font-bold text-slate-900">Chi tiết Bàn ' + tableNum + '</h3>' +
           '<p class="text-xs font-semibold ' + (isPay ? 'text-amber-700' : isHelp ? 'text-red-700' : 'text-[#0F766E]') + '">' +
@@ -824,6 +884,12 @@
               '</div><span class="tabular-nums font-bold shrink-0">' + vnd(i.price * i.qty) + '</span></div>';
           }).join('') : '<p class="text-sm text-slate-500 py-4 text-center">Bàn chưa gọi món.</p>') +
           '</div>' +
+          (transferOptions ? '<div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">' +
+            '<p class="text-xs font-bold text-slate-700">Chuyển bàn sang bàn khác</p>' +
+            '<div class="flex items-center gap-2">' +
+            '<select id="td-transfer-target" class="flex-1 min-w-0 px-3 py-2 text-xs font-semibold bg-white border border-slate-200 rounded-lg">' + transferOptions + '</select>' +
+            '<button id="td-transfer-btn" type="button" class="px-3.5 py-2 bg-slate-900 text-white text-xs font-bold rounded-lg shrink-0">Chuyển bàn</button>' +
+            '</div></div>' : '') +
           '<div id="td-qr-box" class="hidden flex-col items-center p-3 bg-slate-50 rounded-xl border border-slate-200">' +
           '<img id="td-qr-img" class="w-40 h-40 bg-white p-1.5 rounded-lg border border-slate-200" alt="VietQR" />' +
           '<p class="text-xs text-slate-500 mt-1.5">' + esc(config.bank.bankShortName) + ' · ' + esc(config.bank.accountNumber) + '</p></div>' +
@@ -836,6 +902,65 @@
 
         document.getElementById('td-close').onclick = function () { modal.innerHTML = ''; };
         document.getElementById('td-bg').onclick = function (e) { if (e.target.id === 'td-bg') modal.innerHTML = ''; };
+
+        var transferBtn = document.getElementById('td-transfer-btn');
+        if (transferBtn) transferBtn.onclick = async function () {
+          var destNum = Number(document.getElementById('td-transfer-target').value);
+          if (!destNum || destNum === Number(tableNum)) return;
+          transferBtn.disabled = true;
+          transferBtn.textContent = 'Đang chuyển...';
+
+          var existingDest = tableOrders.find(function (o) { return Number(o.tableNumber) === destNum; });
+          var nowIso = new Date().toISOString();
+          var updatedDest;
+          if (existingDest) {
+            var mergedItems = (existingDest.items || []).slice();
+            (ord.items || []).forEach(function (incoming) {
+              var mIdx = mergedItems.findIndex(function (x) {
+                return x.productId === incoming.productId && (x.note || '') === (incoming.note || '');
+              });
+              if (mIdx >= 0) {
+                mergedItems[mIdx] = Object.assign({}, mergedItems[mIdx], { qty: (mergedItems[mIdx].qty || 0) + (incoming.qty || 0) });
+              } else {
+                mergedItems.push(incoming);
+              }
+            });
+            var mTotal = mergedItems.reduce(function (s, i) { return s + (i.price || 0) * (i.qty || 1); }, 0);
+            updatedDest = {
+              tableNumber: destNum,
+              orderType: 'fnb_table',
+              status: (existingDest.status === 'payment_requested' || ord.status === 'payment_requested')
+                ? 'payment_requested'
+                : (existingDest.status === 'support_requested' || ord.status === 'support_requested')
+                  ? 'support_requested'
+                  : 'occupied',
+              items: mergedItems,
+              totalAmount: mTotal,
+              lastOrderId: existingDest.lastOrderId || ord.lastOrderId || '',
+              updatedAt: nowIso
+            };
+          } else {
+            updatedDest = Object.assign({}, ord, { tableNumber: destNum, updatedAt: nowIso });
+          }
+
+          tableOrders = tableOrders.filter(function (o) {
+            return Number(o.tableNumber) !== Number(tableNum) && Number(o.tableNumber) !== destNum;
+          });
+          tableOrders.push(updatedDest);
+          delete lastSnapshot[String(tableNum)];
+          lastSnapshot[String(destNum)] = updatedDest.status + '|' + updatedDest.lastOrderId + '|' + updatedDest.updatedAt + '|' + (updatedDest.items ? updatedDest.items.length : 0);
+
+          try {
+            var bridge = JSON.parse(localStorage.getItem(storageBridgeKey) || '{}');
+            delete bridge[String(tableNum)];
+            bridge[String(destNum)] = updatedDest;
+            localStorage.setItem(storageBridgeKey, JSON.stringify(bridge));
+          } catch (e) {}
+
+          await postGasAction({ action: 'transferTable', fromTable: Number(tableNum), toTable: destNum });
+          render();
+          openTableDetailSheet(destNum);
+        };
 
         var qrBtn = document.getElementById('td-show-qr');
         if (qrBtn) qrBtn.onclick = function () {
@@ -871,6 +996,79 @@
             localStorage.setItem(storageBridgeKey, JSON.stringify(bridge));
           } catch (e) {}
           tableOrders = tableOrders.filter(function (o) { return Number(o.tableNumber) !== Number(tableNum); });
+          modal.innerHTML = '';
+          render();
+        };
+      }
+
+      function openRetailOrderModal(orderKey) {
+        var ord = retailOrders.find(function (o) { return String(o.orderKey || o.orderId || o.lastOrderId) === String(orderKey); });
+        var modal = document.getElementById('admin-modal');
+        if (!ord) {
+          modal.innerHTML = '<div id="ro-bg" class="fixed inset-0 z-50 bg-slate-950/60 flex items-end sm:items-center justify-center">' +
+            '<div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-4">' +
+            '<div class="flex justify-between items-center"><h3 class="text-base font-bold">Đơn hàng đã xử lý</h3>' +
+            '<button id="ro-close" class="px-3 py-1.5 text-xs font-semibold bg-slate-100 rounded-lg">Đóng</button></div>' +
+            '<p class="text-sm text-slate-500">Đơn đặt hàng này không còn trong danh sách chờ.</p></div></div>';
+          document.getElementById('ro-close').onclick = function () { modal.innerHTML = ''; };
+          document.getElementById('ro-bg').onclick = function (e) { if (e.target.id === 'ro-bg') modal.innerHTML = ''; };
+          return;
+        }
+
+        modal.innerHTML = '<div id="ro-bg" class="fixed inset-0 z-50 bg-slate-950/60 flex items-end sm:items-center justify-center">' +
+          '<div class="bg-white w-full max-w-md rounded-t-3xl sm:rounded-2xl p-5 space-y-4 max-h-[90vh] flex flex-col">' +
+          '<div class="flex items-center justify-between border-b border-slate-100 pb-3">' +
+          '<div><h3 class="text-base font-bold text-slate-900">Đơn đặt nhận tại quán · ' + esc(orderKey) + '</h3>' +
+          '<p class="text-xs font-semibold text-amber-700">Thanh toán tại quầy khi khách đến nhận</p></div>' +
+          '<button id="ro-close" class="px-3 py-1.5 text-xs font-semibold bg-slate-100 rounded-lg">Đóng</button></div>' +
+          '<div class="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">' +
+          '<p><strong>Khách hàng:</strong> ' + esc(ord.customerName || 'Khách hàng') + '</p>' +
+          '<p><strong>Số điện thoại:</strong> <a href="tel:' + esc(ord.customerPhone || '') + '" class="text-[#0F766E] font-bold underline">' + esc(ord.customerPhone || '') + '</a></p>' +
+          '<p><strong>Thời gian đến nhận:</strong> ' + esc(ord.pickupTime || 'Sớm nhất') + '</p>' +
+          (ord.note ? '<p><strong>Ghi chú:</strong> ' + esc(ord.note) + '</p>' : '') +
+          '</div>' +
+          '<div class="flex-1 overflow-y-auto space-y-2">' +
+          (ord.items || []).map(function (i) {
+            return '<div class="flex justify-between text-sm border-b border-slate-100 pb-2"><span>' + i.qty + ' × ' + esc(i.name) + '</span><span class="tabular-nums font-bold">' + vnd(i.price * i.qty) + '</span></div>';
+          }).join('') +
+          '</div>' +
+          '<div class="pt-3 border-t border-slate-100 space-y-2.5">' +
+          '<div class="flex justify-between items-center font-bold"><span>Tổng thu tại quầy</span><span class="text-lg tabular-nums text-[#0F766E]">' + vnd(ord.totalAmount || 0) + '</span></div>' +
+          '<div class="grid grid-cols-2 gap-2">' +
+          '<button id="ro-load-pos" class="min-h-[44px] px-3 bg-white border border-slate-200 text-slate-900 text-xs font-bold rounded-xl">Nạp vào POS sửa</button>' +
+          '<button id="ro-collect" class="min-h-[44px] px-3 bg-[#0F766E] text-white text-xs font-bold rounded-xl">Đã giao &amp; Thu tiền</button>' +
+          '</div></div></div></div>';
+
+        document.getElementById('ro-close').onclick = function () { modal.innerHTML = ''; };
+        document.getElementById('ro-bg').onclick = function (e) { if (e.target.id === 'ro-bg') modal.innerHTML = ''; };
+        document.getElementById('ro-load-pos').onclick = function () {
+          posCart = (ord.items || []).map(function (it) { return Object.assign({}, it); });
+          posCustomerLabel = (ord.customerName || 'Khách đặt') + (ord.customerPhone ? ' (' + ord.customerPhone + ')' : '');
+          activeRetailOrderId = String(orderKey);
+          activeTab = 'ops';
+          modal.innerHTML = '';
+          render();
+        };
+        document.getElementById('ro-collect').onclick = async function () {
+          var inv = {
+            id: String(orderKey),
+            createdAt: new Date().toISOString(),
+            model: 'retail',
+            customerOrTable: (ord.customerName || 'Khách đặt') + (ord.customerPhone ? ' (' + ord.customerPhone + ')' : ''),
+            items: ord.items || [],
+            totalAmount: ord.totalAmount || 0,
+            totalCost: 0,
+            profit: ord.totalAmount || 0,
+            paymentMethod: 'Tiền mặt / QR tại quầy'
+          };
+          saveInvoiceLocal(inv);
+          await postGasAction({ action: 'recordInvoice', invoice: inv, clearOrderKey: String(orderKey) });
+          try {
+            var bridge = JSON.parse(localStorage.getItem(storageBridgeKey) || '{}');
+            delete bridge[String(orderKey)];
+            localStorage.setItem(storageBridgeKey, JSON.stringify(bridge));
+          } catch (e) {}
+          retailOrders = retailOrders.filter(function (o) { return String(o.orderKey || o.orderId || o.lastOrderId) !== String(orderKey); });
           modal.innerHTML = '';
           render();
         };
@@ -925,42 +1123,214 @@
         if (activeTab === 'ops') {
           if (config.model === 'retail') {
             var total = posCart.reduce(function (s, i) { return s + i.price * i.qty; }, 0);
-            root.innerHTML = '<div class="grid grid-cols-1 lg:grid-cols-12 gap-4">' +
-              '<div class="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-4 space-y-3">' +
-              '<h2 class="text-base font-bold">POS Tính tiền nhanh</h2>' +
-              '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">' +
-              products.map(function (p) {
-                return '<button data-pos-add="' + esc(p.id) + '" class="p-2.5 border border-slate-200 rounded-xl flex flex-col gap-2 text-left hover:border-[#0F766E]">' +
-                  (p.imageUrl ? '<img src="' + esc(p.imageUrl) + '" onerror="this.style.display=\'none\'" class="w-full aspect-square rounded-lg object-cover bg-slate-100" />' : '') +
-                  '<p class="text-xs font-bold text-slate-900 line-clamp-2">' + esc(p.name) + '</p>' +
-                  '<p class="text-xs font-bold tabular-nums text-[#0F766E]">' + vnd(p.price) + '</p></button>';
-              }).join('') +
-              '</div></div>' +
-              '<div class="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-4 space-y-3">' +
-              '<h2 class="text-base font-bold">Hóa đơn hiện tại</h2>' +
-              '<div class="space-y-2">' +
-              (posCart.length ? posCart.map(function (i) {
-                return '<div class="flex justify-between text-sm border-b border-slate-100 pb-2"><span>' + i.qty + ' × ' + esc(i.name) + '</span><span class="tabular-nums font-bold">' + vnd(i.price * i.qty) + '</span></div>';
-              }).join('') : '<p class="text-sm text-slate-500">Chạm sản phẩm để thêm vào hóa đơn.</p>') +
-              '</div>' +
-              '<div class="pt-3 border-t flex justify-between font-bold text-lg"><span>Tổng thu</span><span class="tabular-nums text-[#0F766E]">' + vnd(total) + '</span></div>' +
-              '<button id="pos-checkout" ' + (!posCart.length ? 'disabled' : '') + ' class="w-full min-h-[46px] bg-[#0F766E] disabled:bg-slate-200 text-white text-sm font-bold rounded-xl">Xác nhận thu tiền</button>' +
-              '</div></div>';
+            var posCats = ['Tất cả'].concat(Array.from(new Set(products.map(function (p) { return p.category || 'Chung'; }))));
+            var posFiltered = products.filter(function (p) {
+              var cOk = posCat === 'Tất cả' || (p.category || 'Chung') === posCat;
+              var q = noAccent(posSearch);
+              var sOk = !q || noAccent(p.name).indexOf(q) >= 0 || noAccent(p.sku).indexOf(q) >= 0 || noAccent(p.category).indexOf(q) >= 0;
+              return cOk && sOk;
+            });
 
-            root.querySelectorAll('[data-pos-add]').forEach(function (b) {
+            var curGasRet = getGasUrl();
+            var retNoGasNotice = !curGasRet
+              ? '<div class="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-between gap-3"><p class="text-xs text-amber-900 font-medium">Chưa kết nối Google Apps Script (/exec) để nhận đơn khách đặt đến lấy.</p><button id="go-settings-ret" class="px-3 py-1.5 bg-amber-600 text-white text-xs font-bold rounded-xl shrink-0">Cài đặt</button></div>'
+              : (gasNeedsAuthHint
+                ? '<div id="gas-auth-hint-box" class="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"><div class="space-y-1 text-xs text-amber-900"><p class="font-bold">Apps Script (/exec) chưa phản hồi JSON từ máy chủ Google</p><p>Bấm mở link bên cạnh 1 lần để kiểm tra hoặc cấp quyền <span class="font-mono">doGet</span> trong Google Sheet.</p></div><div class="flex items-center gap-2 shrink-0"><a href="' + esc(curGasRet + '?action=poll') + '" target="_blank" rel="noreferrer" class="px-3 py-2 bg-[#0F766E] text-white text-xs font-bold rounded-xl">Kiểm tra /exec</a><button id="go-settings-ret" class="px-3 py-2 bg-white border border-amber-300 text-amber-900 text-xs font-bold rounded-xl">Cài đặt</button></div></div>'
+                : '');
+
+            var pickupHTML = retailOrders.length
+              ? '<div class="bg-amber-50/80 border border-amber-300 rounded-2xl p-3.5 space-y-2.5">' +
+                '<div class="flex items-center justify-between gap-2"><h2 class="text-xs font-bold text-amber-950">Đơn khách đặt nhận tại cửa hàng (' + retailOrders.length + ')</h2>' +
+                '<button id="btn-ret-refresh" class="text-xs font-semibold text-[#0F766E] underline">Làm mới</button></div>' +
+                '<div class="grid grid-cols-1 md:grid-cols-2 gap-2.5">' +
+                retailOrders.map(function (ro) {
+                  var rKey = String(ro.orderKey || ro.orderId || ro.lastOrderId || '');
+                  return '<div class="bg-white border border-amber-200 rounded-xl p-3 space-y-2">' +
+                    '<div class="flex items-start justify-between gap-2">' +
+                    '<div class="min-w-0"><p class="text-xs font-bold text-slate-900">' + esc(ro.customerName || 'Khách hàng') + ' · <a href="tel:' + esc(ro.customerPhone || '') + '" class="text-[#0F766E] underline">' + esc(ro.customerPhone || '') + '</a></p>' +
+                    '<p class="text-[11px] font-semibold text-amber-800 mt-0.5">Nhận lúc: ' + esc(ro.pickupTime || 'Sớm nhất') + ' · ' + esc(rKey) + '</p>' +
+                    (ro.note ? '<p class="text-[11px] text-slate-600 mt-0.5">Ghi chú: ' + esc(ro.note) + '</p>' : '') +
+                    '</div><span class="text-xs font-bold tabular-nums text-[#0F766E] shrink-0">' + vnd(ro.totalAmount) + '</span></div>' +
+                    '<p class="text-[11px] text-slate-600">' + (ro.items || []).map(function (it) { return it.qty + '× ' + esc(it.name); }).join(', ') + '</p>' +
+                    '<div class="flex items-center gap-2">' +
+                    '<button data-ro-load="' + esc(rKey) + '" class="flex-1 py-1.5 px-2.5 bg-[#0F766E] text-white text-[11px] font-bold rounded-lg">Nạp vào POS</button>' +
+                    '<button data-ro-open="' + esc(rKey) + '" class="py-1.5 px-2.5 border border-slate-200 text-slate-700 text-[11px] font-semibold rounded-lg">Chi tiết</button>' +
+                    '</div></div>';
+                }).join('') +
+                '</div></div>'
+              : '';
+
+            root.innerHTML = '<div class="space-y-4">' +
+              retNoGasNotice +
+              pickupHTML +
+              '<div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">' +
+              '<div class="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-4 space-y-3">' +
+              '<div class="flex items-center justify-between gap-2"><h2 class="text-base font-bold">POS Tính tiền nhanh</h2>' +
+              '<span class="text-xs text-slate-500 tabular-nums">' + posFiltered.length + ' / ' + products.length + ' SP</span></div>' +
+              '<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">' +
+              '<input id="pos-search" type="search" value="' + esc(posSearch) + '" placeholder="Tìm sản phẩm theo tên, mã SKU..." class="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-[#0F766E]" />' +
+              '<form id="pos-sku-form" class="flex gap-1.5"><input id="pos-sku-inp" type="text" placeholder="Nhập/quét mã SKU + Enter" class="flex-1 min-w-0 px-3 py-2 text-xs font-mono border border-slate-200 rounded-xl" />' +
+              '<button type="submit" class="px-3 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl shrink-0">Thêm</button></form>' +
+              '</div>' +
+              '<div class="flex items-center gap-1.5 overflow-x-auto pb-1">' +
+              posCats.map(function (c) {
+                var act = c === posCat;
+                return '<button type="button" data-pos-cat="' + esc(c) + '" class="px-3 py-1.5 text-xs rounded-xl whitespace-nowrap shrink-0 ' + (act ? 'bg-[#0F766E] text-white font-bold' : 'bg-slate-100 text-slate-700') + '">' + esc(c) + '</button>';
+              }).join('') +
+              '</div>' +
+              '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">' +
+              (posFiltered.length ? posFiltered.map(function (p) {
+                var isOut = p.status === 'Hết hàng' || (p.stock || 0) <= 0;
+                return '<button data-pos-add="' + esc(p.id) + '" ' + (isOut ? 'disabled' : '') + ' class="p-2.5 border border-slate-200 rounded-xl flex flex-col gap-1.5 text-left hover:border-[#0F766E] disabled:opacity-50">' +
+                  (p.imageUrl ? '<img src="' + esc(p.imageUrl) + '" onerror="this.style.display=\'none\'" class="w-full aspect-square rounded-lg object-cover bg-slate-100" />' : '') +
+                  '<p class="text-xs font-bold text-slate-900 leading-snug">' + esc(p.name) + '</p>' +
+                  '<p class="text-[10px] font-mono text-slate-500">' + esc(p.sku) + ' · Kho: ' + (p.stock ?? 0) + '</p>' +
+                  '<p class="text-xs font-bold tabular-nums text-[#0F766E]">' + vnd(p.price) + '</p></button>';
+              }).join('') : '<p class="col-span-full py-8 text-center text-xs text-slate-500">Không tìm thấy sản phẩm nào khớp bộ lọc.</p>') +
+              '</div></div>' +
+
+              '<div class="lg:col-span-5 bg-white border border-slate-200 rounded-2xl p-4 space-y-3 lg:sticky lg:top-16">' +
+              '<div class="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">' +
+              '<div class="min-w-0"><h2 class="text-base font-bold">Hóa đơn hiện tại</h2>' +
+              '<p class="text-[11px] text-slate-500 truncate">' + esc(posCustomerLabel) + '</p></div>' +
+              (posCart.length ? '<button id="pos-clear-all" type="button" class="text-xs font-semibold text-red-700 shrink-0">Xóa giỏ</button>' : '') +
+              '</div>' +
+              '<div class="space-y-2.5 max-h-[45vh] overflow-y-auto">' +
+              (posCart.length ? posCart.map(function (i) {
+                return '<div class="border-b border-slate-100 pb-2.5 space-y-1.5">' +
+                  '<div class="flex items-start justify-between gap-2 text-xs">' +
+                  '<div class="min-w-0 flex-1"><p class="font-bold text-slate-900">' + esc(i.name) + '</p>' +
+                  '<p class="text-[11px] text-slate-500 tabular-nums">' + vnd(i.price) + ' / ' + esc(i.unit || 'Cái') + '</p></div>' +
+                  '<span class="tabular-nums font-bold text-slate-900 shrink-0">' + vnd(i.price * i.qty) + '</span></div>' +
+                  '<div class="flex items-center justify-between gap-2">' +
+                  '<div class="flex items-center gap-1">' +
+                  '<button type="button" data-pos-minus="' + esc(i.productId) + '" class="w-8 h-8 rounded-lg border border-slate-200 font-bold flex items-center justify-center">−</button>' +
+                  '<span class="w-6 text-center text-xs font-bold tabular-nums">' + i.qty + '</span>' +
+                  '<button type="button" data-pos-plus="' + esc(i.productId) + '" class="w-8 h-8 rounded-lg bg-[#0F766E] text-white font-bold flex items-center justify-center">+</button>' +
+                  '</div>' +
+                  '<button type="button" data-pos-rm="' + esc(i.productId) + '" class="px-2.5 h-8 rounded-lg border border-red-200 text-red-700 text-[11px] font-bold">Bỏ</button>' +
+                  '</div></div>';
+              }).join('') : '<p class="text-sm text-slate-500 py-6 text-center">Chạm sản phẩm bên trái để thêm vào hóa đơn.</p>') +
+              '</div>' +
+              '<div id="pos-qr-box" class="hidden flex-col items-center p-3 bg-slate-50 rounded-xl border border-slate-200">' +
+              '<img id="pos-qr-img" class="w-40 h-40 bg-white p-1.5 rounded-lg border border-slate-200" alt="VietQR" />' +
+              '<p class="text-[11px] text-slate-500 mt-1">' + esc(config.bank.bankShortName) + ' · ' + esc(config.bank.accountNumber) + '</p></div>' +
+              '<div class="pt-3 border-t flex justify-between font-bold text-lg"><span>Tổng thu</span><span class="tabular-nums text-[#0F766E]">' + vnd(total) + '</span></div>' +
+              '<div class="grid grid-cols-2 gap-2">' +
+              '<button id="pos-show-qr" type="button" ' + (!posCart.length ? 'disabled' : '') + ' class="min-h-[44px] px-3 bg-white border border-slate-200 disabled:opacity-50 text-slate-900 text-xs font-bold rounded-xl">Hiện VietQR</button>' +
+              '<button id="pos-checkout" type="button" ' + (!posCart.length ? 'disabled' : '') + ' class="min-h-[44px] px-3 bg-[#0F766E] disabled:bg-slate-200 text-white text-xs font-bold rounded-xl">Xác nhận thu tiền</button>' +
+              '</div></div></div></div>';
+
+            var goRetSet = document.getElementById('go-settings-ret');
+            if (goRetSet) goRetSet.onclick = function () { activeTab = 'settings'; render(); };
+            var refRetBtn = document.getElementById('btn-ret-refresh');
+            if (refRetBtn) refRetBtn.onclick = function () { pollGasOrders(true); };
+            root.querySelectorAll('[data-ro-open]').forEach(function (b) {
+              b.onclick = function () { openRetailOrderModal(b.getAttribute('data-ro-open')); };
+            });
+            root.querySelectorAll('[data-ro-load]').forEach(function (b) {
               b.onclick = function () {
-                var p = products.find(function (x) { return x.id === b.getAttribute('data-pos-add'); });
-                var f = posCart.find(function (x) { return x.productId === p.id; });
-                if (f) f.qty += 1; else posCart.push({ productId: p.id, sku: p.sku, name: p.name, price: p.price, qty: 1 });
+                var rKey = b.getAttribute('data-ro-load');
+                var ord = retailOrders.find(function (o) { return String(o.orderKey || o.orderId || o.lastOrderId) === String(rKey); });
+                if (!ord) return;
+                posCart = (ord.items || []).map(function (it) { return Object.assign({}, it); });
+                posCustomerLabel = (ord.customerName || 'Khách đặt') + (ord.customerPhone ? ' (' + ord.customerPhone + ')' : '');
+                activeRetailOrderId = String(rKey);
                 render();
               };
             });
+
+            var posSearchEl = document.getElementById('pos-search');
+            if (posSearchEl) posSearchEl.oninput = function (e) {
+              posSearch = e.target.value;
+              var pos = e.target.selectionStart;
+              render();
+              var nextInp = document.getElementById('pos-search');
+              if (nextInp) { nextInp.focus(); try { nextInp.setSelectionRange(pos, pos); } catch (err) {} }
+            };
+            var posSkuForm = document.getElementById('pos-sku-form');
+            if (posSkuForm) posSkuForm.onsubmit = function (e) {
+              e.preventDefault();
+              var val = noAccent(document.getElementById('pos-sku-inp').value);
+              if (!val) return;
+              var m = products.find(function (p) { return noAccent(p.sku) === val; });
+              if (m) {
+                var f = posCart.find(function (x) { return x.productId === m.id; });
+                if (f) f.qty += 1; else posCart.push({ productId: m.id, sku: m.sku, name: m.name, price: m.price, unit: m.unit, qty: 1 });
+                render();
+              }
+            };
+            root.querySelectorAll('[data-pos-cat]').forEach(function (b) {
+              b.onclick = function () { posCat = b.getAttribute('data-pos-cat'); render(); };
+            });
+            root.querySelectorAll('[data-pos-add]').forEach(function (b) {
+              b.onclick = function () {
+                var p = products.find(function (x) { return x.id === b.getAttribute('data-pos-add'); });
+                if (!p) return;
+                var f = posCart.find(function (x) { return x.productId === p.id; });
+                if (f) f.qty += 1; else posCart.push({ productId: p.id, sku: p.sku, name: p.name, price: p.price, unit: p.unit, qty: 1 });
+                render();
+              };
+            });
+            root.querySelectorAll('[data-pos-plus]').forEach(function (b) {
+              b.onclick = function () {
+                var f = posCart.find(function (x) { return x.productId === b.getAttribute('data-pos-plus'); });
+                if (f) f.qty += 1;
+                render();
+              };
+            });
+            root.querySelectorAll('[data-pos-minus]').forEach(function (b) {
+              b.onclick = function () {
+                var id = b.getAttribute('data-pos-minus');
+                var idx = posCart.findIndex(function (x) { return x.productId === id; });
+                if (idx >= 0) {
+                  posCart[idx].qty -= 1;
+                  if (posCart[idx].qty <= 0) posCart.splice(idx, 1);
+                }
+                render();
+              };
+            });
+            root.querySelectorAll('[data-pos-rm]').forEach(function (b) {
+              b.onclick = function () {
+                var id = b.getAttribute('data-pos-rm');
+                posCart = posCart.filter(function (x) { return x.productId !== id; });
+                render();
+              };
+            });
+            var posClrBtn = document.getElementById('pos-clear-all');
+            if (posClrBtn) posClrBtn.onclick = function () {
+              posCart = [];
+              posCustomerLabel = 'Khách tại quầy';
+              activeRetailOrderId = null;
+              render();
+            };
+            var posQrBtn = document.getElementById('pos-show-qr');
+            if (posQrBtn) posQrBtn.onclick = function () {
+              var box = document.getElementById('pos-qr-box');
+              box.classList.remove('hidden');
+              box.classList.add('flex');
+              if (window.QRCode && window.QRCode.toDataURL) {
+                window.QRCode.toDataURL(buildVietQR(total, 'POS ' + (config.shopName || '').slice(0, 12)), { width: 220, margin: 2 }, function (err, url) {
+                  if (!err) document.getElementById('pos-qr-img').src = url;
+                });
+              }
+            };
             var chk = document.getElementById('pos-checkout');
             if (chk) chk.onclick = async function () {
-              var inv = { id: 'POS-' + Date.now().toString().slice(-6), createdAt: new Date().toISOString(), model: 'retail', customerOrTable: 'Khách tại quầy', items: posCart, totalAmount: total, totalCost: 0, profit: total, paymentMethod: 'Tiền mặt / QR' };
+              var inv = { id: 'POS-' + Date.now().toString().slice(-6), createdAt: new Date().toISOString(), model: 'retail', customerOrTable: posCustomerLabel || 'Khách tại quầy', items: posCart, totalAmount: total, totalCost: 0, profit: total, paymentMethod: 'Tiền mặt / QR' };
               saveInvoiceLocal(inv);
-              await postGasAction({ action: 'recordInvoice', invoice: inv });
+              await postGasAction({ action: 'recordInvoice', invoice: inv, clearOrderKey: activeRetailOrderId || undefined });
+              if (activeRetailOrderId) {
+                try {
+                  var bridge = JSON.parse(localStorage.getItem(storageBridgeKey) || '{}');
+                  delete bridge[String(activeRetailOrderId)];
+                  localStorage.setItem(storageBridgeKey, JSON.stringify(bridge));
+                } catch (e) {}
+                retailOrders = retailOrders.filter(function (o) { return String(o.orderKey || o.orderId || o.lastOrderId) !== String(activeRetailOrderId); });
+              }
               posCart = [];
+              posCustomerLabel = 'Khách tại quầy';
+              activeRetailOrderId = null;
               render();
             };
           } else {
@@ -1598,15 +1968,10 @@
       function startAdminPolling() {
         if (!isUnlocked || !config) return;
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-        if (config.model === 'fnb') {
-          pollGasOrders(true);
-          pollTimer = setInterval(function () {
-            if (!document.hidden && isUnlocked) pollGasOrders(false);
-          }, 5000);
-        } else {
-          syncStatusText = 'Chế độ Bán lẻ / POS sẵn sàng';
-          updateSyncStatusUI();
-        }
+        pollGasOrders(true);
+        pollTimer = setInterval(function () {
+          if (!document.hidden && isUnlocked) pollGasOrders(false);
+        }, 5000);
       }
 
       function stopSkuScanner() {
@@ -1644,7 +2009,7 @@
       });
 
       document.addEventListener('visibilitychange', function () {
-        if (!document.hidden && isUnlocked && config && config.model === 'fnb') {
+        if (!document.hidden && isUnlocked && config) {
           pollGasOrders(false);
         }
       });
